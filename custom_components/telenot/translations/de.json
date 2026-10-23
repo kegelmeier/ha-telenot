@@ -1,0 +1,273 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Telenot Zentrale",
+        "description": "Direkte Verbindung zur IP-Schnittstelle der Zentrale (z. B. comXline), wie die BuildSec-App. Es ist immer nur eine Fernverbindung gleichzeitig möglich.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "access_level": "Berechtigungsebene",
+          "keypad_code": "Bedienteilcode",
+          "keypad_address": "Bedienteiladresse"
+        },
+        "data_description": {
+          "host": "IP-Adresse oder Hostname der Zentrale / des Übertragungsgeräts",
+          "port": "Für BuildSec konfigurierter TCP-Port",
+          "access_level": "Wie in der BuildSec-App",
+          "keypad_code": "Betreiber- oder Errichtercode (max. 6 Ziffern)",
+          "keypad_address": "com2BUS-Bedienteiladresse (0-15), die für die App freigegeben ist"
+        }
+      },
+      "operator": {
+        "title": "Betreiberzugang",
+        "data": {
+          "freischaltcode": "Freischaltcode"
+        },
+        "data_description": {
+          "freischaltcode": "16 Hex-Zeichen, wie in der BuildSec-App"
+        }
+      },
+      "key": {
+        "title": "Schlüssel",
+        "data": {
+          "key_number": "Schlüsselnummer",
+          "aes_key": "AES-Schlüssel"
+        },
+        "data_description": {
+          "key_number": "VdS-Schlüsselnummer",
+          "aes_key": "32 Hex-Zeichen"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Bedienteilcode abgelehnt",
+        "description": "Die Zentrale hat den Bedienteilcode abgelehnt. Bitte aktuellen Code eingeben.",
+        "data": {
+          "keypad_code": "Bedienteilcode"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Keine Verbindung zur Zentrale",
+      "invalid_auth": "Code oder Berechtigungsebene abgelehnt",
+      "busy": "Fernzugriff bereits belegt (BuildSec-App schließen)",
+      "invalid_key": "Falsche Schlüsselnummer, AES-Schlüssel oder Freischaltcode",
+      "remote_disabled": "App-Freigabe ist in der Zentrale gesperrt",
+      "invalid_keypad_address": "Unzulässige Bedienteiladresse",
+      "keypad_in_use": "Bedienteil belegt, andere Adresse wählen",
+      "lan_not_allowed": "LAN-Verbindung nicht erlaubt",
+      "ip_not_allowed": "IP-Adresse nicht berechtigt",
+      "panel_error": "Die Zentrale hat einen Fehler gemeldet",
+      "invalid_code_format": "Der Code muss aus 1 bis 6 Ziffern bestehen",
+      "invalid_freischaltcode": "16 Hex-Zeichen erforderlich",
+      "invalid_aes_key": "32 Hex-Zeichen erforderlich",
+      "reserved_key_number": "Diese Schlüsselnummer ist reserviert",
+      "unknown": "Unerwarteter Fehler"
+    },
+    "abort": {
+      "already_configured": "Diese Zentrale ist bereits eingerichtet",
+      "reauth_successful": "Erneute Anmeldung erfolgreich"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Telenot Optionen",
+        "data": {
+          "connection_mode": "Verbindungsmodus",
+          "scan_interval": "Aktualisierungsintervall (bei Bedarf)",
+          "idle_timeout": "Trennen nach Leerlauf (bei Bedarf)",
+          "armed_away_source": "Anzeige für 'extern scharf'",
+          "armed_home_source": "Anzeige für 'intern scharf'",
+          "arm_sequence": "Tastenfolge Scharf/Unscharf",
+          "require_code": "Code in Home Assistant abfragen"
+        },
+        "data_description": {
+          "connection_mode": "Dauerhaft hält die Fernverbindung offen (Echtzeit), blockiert aber die BuildSec-App. Bei Bedarf verbindet nur zum Aktualisieren oder Schalten.",
+          "armed_away_source": "Anzeige, die bei extern scharf leuchtet",
+          "armed_home_source": "Anzeige, die bei intern scharf leuchtet",
+          "arm_sequence": "Wie Home Assistant nach der Scharf-/Unscharftaste den Code eingibt",
+          "require_code": "Wenn aktiv, wird der in Home Assistant eingegebene Code statt des gespeicherten Bedienteilcodes gesendet"
+        }
+      }
+    }
+  },
+  "selector": {
+    "access_level": {
+      "options": {
+        "operator": "Betreiber",
+        "installer": "Errichter",
+        "remote_control": "Fernbedienung (hipas)"
+      }
+    },
+    "connection_mode": {
+      "options": {
+        "persistent": "Dauerhaft",
+        "on_demand": "Bei Bedarf"
+      }
+    },
+    "arm_sequence": {
+      "options": {
+        "auto": "Automatisch: Code eingeben, wenn das Display danach fragt",
+        "code": "Immer: Taste, Code, OK",
+        "key_only": "Nur Taste"
+      }
+    },
+    "state_source": {
+      "options": {
+        "auto": "Automatisch (aus Beschriftungen, sonst letzter Displayzustand)",
+        "lcd_latched": "Letzter im Display angezeigter / von Home Assistant gesendeter Zustand",
+        "lcd": "Displaytext des Bedienteils",
+        "none": "Nicht verwendet",
+        "led_1": "Freie LED 1",
+        "led_2": "Freie LED 2",
+        "led_3": "Freie LED 3",
+        "led_4": "Freie LED 4",
+        "area_1": "Meldebereich 1",
+        "area_2": "Meldebereich 2",
+        "area_3": "Meldebereich 3",
+        "area_4": "Meldebereich 4",
+        "area_5": "Meldebereich 5",
+        "area_6": "Meldebereich 6",
+        "area_7": "Meldebereich 7",
+        "area_8": "Meldebereich 8",
+        "area_9": "Meldebereich 9",
+        "area_10": "Meldebereich 10",
+        "area_11": "Meldebereich 11",
+        "area_12": "Meldebereich 12",
+        "area_13": "Meldebereich 13",
+        "area_14": "Meldebereich 14",
+        "area_15": "Meldebereich 15",
+        "area_16": "Meldebereich 16",
+        "area_17": "Meldebereich 17",
+        "area_18": "Meldebereich 18",
+        "area_19": "Meldebereich 19",
+        "area_20": "Meldebereich 20",
+        "area_21": "Meldebereich 21",
+        "area_22": "Meldebereich 22",
+        "area_23": "Meldebereich 23",
+        "area_24": "Meldebereich 24",
+        "area_25": "Meldebereich 25",
+        "area_26": "Meldebereich 26",
+        "area_27": "Meldebereich 27",
+        "area_28": "Meldebereich 28",
+        "area_29": "Meldebereich 29",
+        "area_30": "Meldebereich 30",
+        "area_31": "Meldebereich 31",
+        "area_32": "Meldebereich 32",
+        "switch_1": "Schaltfunktion 1",
+        "switch_2": "Schaltfunktion 2",
+        "switch_3": "Schaltfunktion 3",
+        "switch_4": "Schaltfunktion 4",
+        "switch_5": "Schaltfunktion 5",
+        "switch_6": "Schaltfunktion 6",
+        "switch_7": "Schaltfunktion 7",
+        "switch_8": "Schaltfunktion 8",
+        "switch_9": "Schaltfunktion 9",
+        "switch_10": "Schaltfunktion 10",
+        "switch_11": "Schaltfunktion 11",
+        "switch_12": "Schaltfunktion 12",
+        "switch_13": "Schaltfunktion 13",
+        "switch_14": "Schaltfunktion 14",
+        "switch_15": "Schaltfunktion 15",
+        "switch_16": "Schaltfunktion 16"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "alarm": {
+        "name": "Alarm"
+      },
+      "fault": {
+        "name": "Störung"
+      },
+      "walk_test": {
+        "name": "Gehtest"
+      },
+      "operation": {
+        "name": "Betrieb"
+      },
+      "connection": {
+        "name": "Verbindung"
+      },
+      "area": {
+        "name": "Meldebereich {index}"
+      }
+    },
+    "switch": {
+      "switching_function": {
+        "name": "Schaltfunktion {index}"
+      },
+      "area_lock": {
+        "name": "Meldebereich {index} gesperrt"
+      }
+    },
+    "sensor": {
+      "display_line": {
+        "name": "Displayzeile {line}"
+      },
+      "buzzer": {
+        "name": "Summer",
+        "state": {
+          "off": "Aus",
+          "1s": "1 s",
+          "3s": "3 s",
+          "intermittent": "Intermittierend",
+          "beep_pause": "Piepton mit Pause",
+          "continuous": "Dauerton"
+        }
+      },
+      "free_led": {
+        "name": "LED {index}",
+        "state": {
+          "off": "Aus",
+          "green": "Grün",
+          "red": "Rot",
+          "yellow": "Gelb"
+        }
+      }
+    },
+    "button": {
+      "key_digit": {
+        "name": "Taste {digit}"
+      },
+      "key_ok": {
+        "name": "Taste OK"
+      },
+      "key_esc": {
+        "name": "Taste ESC"
+      },
+      "key_up": {
+        "name": "Taste hoch"
+      },
+      "key_down": {
+        "name": "Taste runter"
+      },
+      "key_arm_away": {
+        "name": "Taste extern scharf"
+      },
+      "key_arm_home": {
+        "name": "Taste intern scharf"
+      },
+      "key_disarm": {
+        "name": "Taste unscharf"
+      },
+      "key_function": {
+        "name": "Funktionstaste"
+      }
+    }
+  },
+  "services": {
+    "send_keys": {
+      "name": "Tasten senden",
+      "description": "Tasten am virtuellen Bedienteil drücken.",
+      "fields": {
+        "keys": {
+          "name": "Tasten",
+          "description": "Leerzeichengetrennt: Ziffern, ok, esc, up, down, arm_away, arm_home, disarm, function oder 0xNN"
+        }
+      }
+    }
+  }
+}
