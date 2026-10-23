@@ -1,6 +1,9 @@
 {
   "domain": "telenot_buildsec",
   "name": "Telenot (BuildSec)",
+  "categories": [
+    "security_safety.alarm_systems"
+  ],
   "codeowners": [
     "@kegelmeier"
   ],
