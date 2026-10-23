@@ -4,7 +4,15 @@ A custom integration that controls Telenot intrusion alarm panels (complex400 / 
 
 The protocol was reverse-engineered from the BuildSec APK (`com.TelenotElectronic.BuildSec`, .NET MAUI). The findings are in [`docs/`](docs/).
 
-> **Status: untested against real hardware.** The implementation follows the decompiled app closely. It passes a test suite against a simulated panel. The first run against a real panel may still turn up details that need adjusting; see [Unverified points](#unverified-points).
+> [!WARNING]
+> **Not validated on real hardware.** This integration has never been connected to a real Telenot panel. It was written purely from a static analysis of the BuildSec app and is tested only against a simulated panel written from the same analysis, so the tests show the code is self-consistent, not that it matches a real panel.
+>
+> **This controls a security system.** Until you have confirmed it on your own installation:
+> - do not rely on the alarm state shown in Home Assistant,
+> - verify every arm/disarm at a real keypad or in the BuildSec app,
+> - do not build security-relevant automations on it.
+>
+> Expected confidence per layer: encryption/framing high, session handling medium-high, keypad state medium, arm/disarm dialogue and armed-state detection low until tuned to your panel (see [Unverified points](#unverified-points)). Reports with a debug log are very welcome.
 
 ## How it works
 
@@ -55,7 +63,7 @@ Areas and switching functions are named from the label texts stored in the panel
 The protocol has **no generic armed bit**. What a keypad shows depends on how your installer programmed the panel. In the options you choose, for *armed away* and *armed home*:
 
 - **Automatic** (default): uses the free LED, indicator area or switching function whose label contains "extern … scharf" or "intern … scharf". If none matches, it uses the last display state (next item).
-- **Last display state**: remembers the last time the display said "Extern scharf", "Intern scharf" or "Unscharf", and the result of Home Assistant's own arm/disarm commands. It survives restarts. Use this if your keypad lights no LED while armed.
+- **Last display state**: remembers the last time the panel display said "Extern scharf", "Intern scharf" or "Unscharf". It survives restarts. It is never set from Home Assistant's own commands, so a failed arm cannot show as armed. Use this if your keypad lights no LED while armed.
 - **Keypad display text**: only the current display content counts.
 - A specific **free LED 1–4**, **indicator area 1–32** or **switching function 1–16**.
 

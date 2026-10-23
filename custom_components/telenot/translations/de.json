@@ -116,7 +116,7 @@
     "state_source": {
       "options": {
         "auto": "Automatisch (aus Beschriftungen, sonst letzter Displayzustand)",
-        "lcd_latched": "Letzter im Display angezeigter / von Home Assistant gesendeter Zustand",
+        "lcd_latched": "Letzter im Display angezeigter Zustand",
         "lcd": "Displaytext des Bedienteils",
         "none": "Nicht verwendet",
         "led_1": "Freie LED 1",

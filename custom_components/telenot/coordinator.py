@@ -120,7 +120,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         self.client = create_client(dict(entry.data))
         self.labels = Labels()
         self.arming_target: AlarmControlPanelState | None = None
-        # last arm state reported by the display or confirmed by our own command
+        # last arm state reported by the panel display (never assumed from our own commands)
         self.latched_state: AlarmControlPanelState | None = None
         self._store: Store[dict[str, Any]] = Store(
             hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}"
@@ -398,10 +398,6 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             self.arming_target = None
             self.async_update_listeners()
             raise
-        if sequence != SEQUENCE_KEY_ONLY:
-            # assume success unless the display reported a refusal
-            self._set_latched(target)
-            self.async_update_listeners()
 
     @callback
     def _clear_arming(self, target: AlarmControlPanelState) -> None:
