@@ -2,3 +2,15 @@
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "ASYNC"]
+# timeouts are explicit parameters of the protocol API
+ignore = ["ASYNC109"]
+
+[tool.ruff.lint.per-file-ignores]
+"tools/*" = ["E501"]

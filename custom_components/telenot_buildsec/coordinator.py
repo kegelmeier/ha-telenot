@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -13,7 +14,11 @@ from homeassistant.components.alarm_control_panel import AlarmControlPanelState
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
@@ -23,13 +28,18 @@ from .const import (
     ACCESS_INSTALLER,
     ACCESS_OPERATOR,
     ACCESS_REMOTE_CONTROL,
+    ACTION_ARM_AWAY,
+    ACTION_ARM_HOME,
+    ACTION_DISARM,
     CONF_ACCESS_LEVEL,
     CONF_AES_KEY,
+    CONF_ALARM_CODE,
     CONF_ARM_SEQUENCE,
-    CONF_EXTENDED_HEADER,
     CONF_ARMED_AWAY_SOURCE,
     CONF_ARMED_HOME_SOURCE,
+    CONF_CODE_REQUIRED_FOR,
     CONF_CONNECTION_MODE,
+    CONF_EXTENDED_HEADER,
     CONF_FREISCHALTCODE,
     CONF_IDLE_TIMEOUT,
     CONF_KEY_NUMBER,
@@ -77,6 +87,35 @@ _REFUSED = re.compile(r"falsch|nicht m.glich|verweigert|gesperrt|wrong|denied", 
 _AWAY = re.compile(r"(extern|ext\.).*scharf|scharf.*(extern|ext\.)|armed away", re.IGNORECASE)
 _HOME = re.compile(r"(intern|int\.).*scharf|scharf.*(intern|int\.)|armed home", re.IGNORECASE)
 _DISARMED = re.compile(r"unscharf|disarmed", re.IGNORECASE)
+
+# Event log (event entity) types
+EVENT_ARMED_AWAY = "armed_away"
+EVENT_ARMED_HOME = "armed_home"
+EVENT_DISARMED = "disarmed"
+EVENT_TRIGGERED = "triggered"
+EVENT_FAULT = "fault"
+EVENT_FAULT_CLEARED = "fault_cleared"
+EVENT_COMMAND_FAILED = "command_failed"
+EVENT_TYPES = [
+    EVENT_ARMED_AWAY,
+    EVENT_ARMED_HOME,
+    EVENT_DISARMED,
+    EVENT_TRIGGERED,
+    EVENT_FAULT,
+    EVENT_FAULT_CLEARED,
+    EVENT_COMMAND_FAILED,
+]
+_STATE_EVENTS = {
+    AlarmControlPanelState.ARMED_AWAY: EVENT_ARMED_AWAY,
+    AlarmControlPanelState.ARMED_HOME: EVENT_ARMED_HOME,
+    AlarmControlPanelState.DISARMED: EVENT_DISARMED,
+    AlarmControlPanelState.TRIGGERED: EVENT_TRIGGERED,
+}
+_TARGET_ACTIONS = {
+    AlarmControlPanelState.ARMED_AWAY: ACTION_ARM_AWAY,
+    AlarmControlPanelState.ARMED_HOME: ACTION_ARM_HOME,
+    AlarmControlPanelState.DISARMED: ACTION_DISARM,
+}
 
 type TelenotConfigEntry = ConfigEntry[TelenotCoordinator]
 
@@ -135,6 +174,11 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         self._arming_unsub: CALLBACK_TYPE | None = None
         self._labels_task: asyncio.Task[None] | None = None
         self._shutting_down = False
+        self.panel_device_id: str | None = None
+        self._event_listeners: list[Callable[[str, dict[str, Any]], None]] = []
+        # last panel-reported state, None until a complete snapshot after (re)connect
+        self._last_state: AlarmControlPanelState | None = None
+        self._last_fault: bool | None = None
         self._unsubs = [
             self.client.add_listener(self._on_client_state),
             self.client.add_disconnect_listener(self._on_client_disconnect),
@@ -184,10 +228,49 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
 
     @property
     def available(self) -> bool:
-        """Entities are available while connected (persistent) or last poll succeeded."""
+        """Available once the panel sent its full status (persistent) or the last poll succeeded.
+
+        After a (re)connect, entities stay unavailable until display and LEDs have been
+        received, so a stale state is never shown as current.
+        """
         if self.on_demand:
             return self.last_update_success
-        return self.client.connected
+        return self.client.connected and self.client.state.complete
+
+    # ------------------------------------------------------------------ event log
+
+    def add_event_listener(
+        self, callback_: Callable[[str, dict[str, Any]], None]
+    ) -> Callable[[], None]:
+        """Subscribe to event-log entries; returns an unsubscribe function."""
+        self._event_listeners.append(callback_)
+        return lambda: (
+            self._event_listeners.remove(callback_) if callback_ in self._event_listeners else None
+        )
+
+    @callback
+    def _emit(self, event_type: str, **attributes: Any) -> None:
+        for listener in list(self._event_listeners):
+            listener(event_type, attributes)
+
+    @callback
+    def _track_events(self) -> None:
+        """Turn panel-reported state changes into event-log entries."""
+        state = self.client.state
+        if not (self.client.connected and state.complete):
+            return
+        display = " / ".join(line for line in state.display if line)
+        current = self.alarm_state()
+        if current in _STATE_EVENTS:  # ARMING is our own transient state
+            if self._last_state is not None and current != self._last_state:
+                self._emit(_STATE_EVENTS[current], source="panel", display=display)
+            self._last_state = current
+        fault = state.fault.active
+        if self._last_fault is not None and fault != self._last_fault:
+            self._emit(
+                EVENT_FAULT if fault else EVENT_FAULT_CLEARED, source="panel", display=display
+            )
+        self._last_fault = fault
 
     async def _connection_loop(self) -> None:
         backoff = 5
@@ -236,10 +319,10 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         state = self.client.state
         if state.firmware is None:
             return
-        registry = dr.async_get(self.hass)
-        base = self.config_entry.unique_id or self.config_entry.entry_id
-        if device := registry.async_get_device(identifiers={(DOMAIN, base)}):
-            registry.async_update_device(device.id, sw_version=state.firmware)
+        if self.panel_device_id is not None:
+            dr.async_get(self.hass).async_update_device(
+                self.panel_device_id, sw_version=state.firmware
+            )
 
     async def _refresh_labels(self) -> None:
         try:
@@ -249,10 +332,14 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             return
         finally:
             self._labels_task = None
+        areas_changed = labels.areas != self.labels.areas
         self.labels = labels
         await self._store.async_save(self._store_data())
         self._enable_labelled_entities()
         self.async_update_listeners()
+        if areas_changed and not self._shutting_down:
+            # Area devices are created from the labels at setup.
+            self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
         if self.on_demand:
             self._schedule_idle_disconnect()
 
@@ -288,11 +375,14 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             self._set_latched(AlarmControlPanelState.DISARMED)
         if self.arming_target is not None and self.alarm_state() == self.arming_target:
             self.arming_target = None
+        self._track_events()
         self.async_set_updated_data(self.client.state)
 
     @callback
     def _on_client_disconnect(self, error: Exception | None) -> None:
         self._disconnected.set()
+        self._last_state = None
+        self._last_fault = None
         if not self._shutting_down:
             _LOGGER.debug("Telenot session closed: %s", error)
             self.async_update_listeners()
@@ -317,7 +407,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             await self._connect()
 
     def _schedule_idle_disconnect(self) -> None:
-        if not self.on_demand:
+        if not self.on_demand or self._shutting_down:
             return
         self._cancel_idle()
         self._idle_unsub = self.hass.loop.call_later(
@@ -364,13 +454,19 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         await self._command(run)
 
     async def async_set_alarm(self, target: AlarmControlPanelState, code: str | None) -> None:
-        """Arm or disarm via the keypad dialogue (ES/IS/US key, code prompt, OK)."""
+        """Arm or disarm via the keypad dialogue (ES/IS/US key, code prompt, OK).
+
+        ``code`` is the Home Assistant alarm code. It is checked here and never sent to
+        the panel; the panel always gets the stored keypad code.
+        """
+        action = _TARGET_ACTIONS[target]
+        self.check_code(action, code)
         key = {
             AlarmControlPanelState.ARMED_AWAY: Key.ARM_AWAY,
             AlarmControlPanelState.ARMED_HOME: Key.ARM_HOME,
             AlarmControlPanelState.DISARMED: Key.DISARM,
         }[target]
-        code = code or self.config_entry.data[CONF_KEYPAD_CODE]
+        code = self.config_entry.data[CONF_KEYPAD_CODE]
         sequence = self.options[CONF_ARM_SEQUENCE]
 
         async def run() -> None:
@@ -399,10 +495,31 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             ).cancel
         try:
             await self._command(run)
-        except HomeAssistantError:
+        except HomeAssistantError as err:
             self.arming_target = None
             self.async_update_listeners()
+            self._emit(
+                EVENT_COMMAND_FAILED, source="home_assistant", action=action, reason=str(err)
+            )
             raise
+
+    def code_required(self, action: str) -> bool:
+        """Whether Home Assistant asks for the alarm code for ``action``."""
+        return (
+            bool(self.options[CONF_ALARM_CODE]) and action in self.options[CONF_CODE_REQUIRED_FOR]
+        )
+
+    def check_code(self, action: str, code: str | None) -> None:
+        """Reject a missing or wrong alarm code before anything reaches the panel."""
+        if not self.code_required(action):
+            return
+        expected = str(self.options[CONF_ALARM_CODE])
+        if code and hmac.compare_digest(code.encode(), expected.encode()):
+            return
+        self._emit(
+            EVENT_COMMAND_FAILED, source="home_assistant", action=action, reason="wrong code"
+        )
+        raise ServiceValidationError(translation_domain=DOMAIN, translation_key="wrong_code")
 
     @callback
     def _clear_arming(self, target: AlarmControlPanelState) -> None:
@@ -413,15 +530,22 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
 
     async def async_toggle_switch(self, index: int) -> None:
         """Toggle switching function ``index``."""
-        response = await self._command(lambda: self.client.press_and_confirm(switch_key(index)))
-        if response == 2:
-            raise HomeAssistantError("Operation not possible, function disabled in the panel")
+        await self._toggle(f"switch_{index}", switch_key(index))
 
     async def async_toggle_area_lock(self, index: int) -> None:
         """Lock/unlock (bypass) Meldebereich ``index``."""
-        response = await self._command(lambda: self.client.press_and_confirm(area_lock_key(index)))
-        if response == 2:
-            raise HomeAssistantError("Operation not possible, function disabled in the panel")
+        await self._toggle(f"area_lock_{index}", area_lock_key(index))
+
+    async def _toggle(self, action: str, key: int) -> None:
+        try:
+            response = await self._command(lambda: self.client.press_and_confirm(key))
+            if response == 2:
+                raise HomeAssistantError("Operation not possible, function disabled in the panel")
+        except HomeAssistantError as err:
+            self._emit(
+                EVENT_COMMAND_FAILED, source="home_assistant", action=action, reason=str(err)
+            )
+            raise
 
     # ------------------------------------------------------------------ derived state
 

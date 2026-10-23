@@ -80,16 +80,18 @@
           "armed_away_source": "Anzeige für 'extern scharf'",
           "armed_home_source": "Anzeige für 'intern scharf'",
           "arm_sequence": "Tastenfolge Scharf/Unscharf",
-          "require_code": "Code in Home Assistant abfragen",
-          "extended_header": "Erweiterten Telenot-Protokollkopf verwenden (experimentell)"
+          "extended_header": "Erweiterten Telenot-Protokollkopf verwenden (experimentell)",
+          "alarm_code": "Alarmcode (Home Assistant)",
+          "code_required_for": "Alarmcode verlangen für"
         },
         "data_description": {
           "connection_mode": "Dauerhaft hält die Fernverbindung offen (Echtzeit), blockiert aber die BuildSec-App. Bei Bedarf verbindet nur zum Aktualisieren oder Schalten.",
           "armed_away_source": "Anzeige, die bei extern scharf leuchtet",
           "armed_home_source": "Anzeige, die bei intern scharf leuchtet",
           "arm_sequence": "Wie Home Assistant nach der Scharf-/Unscharftaste den Code eingibt",
-          "require_code": "Wenn aktiv, wird der in Home Assistant eingegebene Code statt des gespeicherten Bedienteilcodes gesendet",
-          "extended_header": "Aus (empfohlen): einfacher VdS-2465-Kopf wie in der BuildSec-iOS-App, an einer echten Zentrale bestätigt. An: Telenot-Protokollerweiterung der Android-App, nicht an echter Hardware geprüft."
+          "extended_header": "Aus (empfohlen): einfacher VdS-2465-Kopf wie in der BuildSec-iOS-App, an einer echten Zentrale bestätigt. An: Telenot-Protokollerweiterung der Android-App, nicht an echter Hardware geprüft.",
+          "alarm_code": "Wird von Home Assistant geprüft und nie an die Zentrale gesendet (die Zentrale erhält immer den gespeicherten Bedienteilcode). Leer lassen, um nie nach einem Code zu fragen.",
+          "code_required_for": "Aktionen, die den Alarmcode brauchen. Ein falscher Code erreicht die Zentrale nie. Home Assistant hat einen Schalter für beide Scharfschaltarten: braucht eine den Code, öffnet sich das Tastenfeld auch für die andere, geprüft wird nur die ausgewählte."
         }
       }
     }
@@ -174,6 +176,13 @@
         "switch_15": "Schaltfunktion 15",
         "switch_16": "Schaltfunktion 16"
       }
+    },
+    "code_required_for": {
+      "options": {
+        "arm_away": "Extern scharf",
+        "arm_home": "Intern scharf",
+        "disarm": "Unscharf"
+      }
     }
   },
   "entity": {
@@ -195,6 +204,9 @@
       },
       "area": {
         "name": "Meldebereich {index}"
+      },
+      "area_state": {
+        "name": "Zustand"
       }
     },
     "switch": {
@@ -203,6 +215,9 @@
       },
       "area_lock": {
         "name": "Meldebereich {index} gesperrt"
+      },
+      "area_locked": {
+        "name": "Gesperrt"
       }
     },
     "sensor": {
@@ -258,6 +273,24 @@
       "key_function": {
         "name": "Funktionstaste"
       }
+    },
+    "event": {
+      "event_log": {
+        "name": "Ereignisprotokoll",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "armed_away": "Extern scharf",
+              "armed_home": "Intern scharf",
+              "disarmed": "Unscharf",
+              "triggered": "Alarm",
+              "fault": "Störung",
+              "fault_cleared": "Störung behoben",
+              "command_failed": "Befehl fehlgeschlagen"
+            }
+          }
+        }
+      }
     }
   },
   "services": {
@@ -270,6 +303,11 @@
           "description": "Leerzeichengetrennt: Ziffern, ok, esc, up, down, arm_away, arm_home, disarm, function oder 0xNN"
         }
       }
+    }
+  },
+  "exceptions": {
+    "wrong_code": {
+      "message": "Falscher oder fehlender Alarmcode"
     }
   }
 }

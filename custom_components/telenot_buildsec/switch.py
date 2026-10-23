@@ -78,22 +78,15 @@ class TelenotFunctionSwitch(TelenotEntity, SwitchEntity):
 class TelenotAreaLockSwitch(TelenotEntity, SwitchEntity):
     """Lock (bypass) of a Meldebereich; yellow keypad LED."""
 
-    _attr_translation_key = "area_lock"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: TelenotCoordinator, index: int) -> None:
-        """Initialise."""
-        super().__init__(coordinator, f"area_lock_{index}")
+        """Initialise; labelled areas share the area's own device."""
+        super().__init__(coordinator, f"area_lock_{index}", area=index)
         self._index = index
         self._attr_entity_registry_enabled_default = index in coordinator.labels.areas
+        self._attr_translation_key = "area_locked" if self.has_area_device else "area_lock"
         self._attr_translation_placeholders = {"index": str(index)}
-
-    @property
-    def name(self) -> str | None:
-        """Use the panel's label when known."""
-        if label := self.coordinator.labels.areas.get(self._index):
-            return f"{label} locked"
-        return super().name
 
     @property
     def is_on(self) -> bool:

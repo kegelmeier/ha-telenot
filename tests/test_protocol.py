@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from custom_components.telenot.pytelenot import (
+from custom_components.telenot_buildsec.pytelenot import (
     AccessLevel,
     BuildSecClient,
     Key,
@@ -17,7 +17,7 @@ from custom_components.telenot.pytelenot import (
     encode_code,
     switch_key,
 )
-from custom_components.telenot.pytelenot.crypto import (
+from custom_components.telenot_buildsec.pytelenot.crypto import (
     derive_betreiber_key,
     internet_checksum,
     s2_checksum,

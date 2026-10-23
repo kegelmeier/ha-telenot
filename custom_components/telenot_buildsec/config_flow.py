@@ -32,19 +32,21 @@ from homeassistant.helpers.selector import (
 from .const import (
     ACCESS_LEVELS,
     ACCESS_OPERATOR,
+    CODE_ACTIONS,
     CONF_ACCESS_LEVEL,
     CONF_AES_KEY,
+    CONF_ALARM_CODE,
     CONF_ARM_SEQUENCE,
-    CONF_EXTENDED_HEADER,
     CONF_ARMED_AWAY_SOURCE,
     CONF_ARMED_HOME_SOURCE,
+    CONF_CODE_REQUIRED_FOR,
     CONF_CONNECTION_MODE,
+    CONF_EXTENDED_HEADER,
     CONF_FREISCHALTCODE,
     CONF_IDLE_TIMEOUT,
     CONF_KEY_NUMBER,
     CONF_KEYPAD_ADDRESS,
     CONF_KEYPAD_CODE,
-    CONF_REQUIRE_CODE,
     CONF_SCAN_INTERVAL,
     DEFAULT_KEYPAD_ADDRESS,
     DEFAULT_OPTIONS,
@@ -270,6 +272,7 @@ class TelenotOptionsFlow(OptionsFlowWithReload):
         if user_input is not None:
             for key in (CONF_IDLE_TIMEOUT, CONF_SCAN_INTERVAL):
                 user_input[key] = int(user_input[key])
+            user_input[CONF_ALARM_CODE] = str(user_input.get(CONF_ALARM_CODE) or "").strip()
             return self.async_create_entry(data=user_input)
         current = {**DEFAULT_OPTIONS, **self.config_entry.options}
         sources = SelectSelector(
@@ -313,9 +316,19 @@ class TelenotOptionsFlow(OptionsFlowWithReload):
                         translation_key=CONF_ARM_SEQUENCE,
                     )
                 ),
+                vol.Optional(
+                    CONF_ALARM_CODE,
+                    description={"suggested_value": current[CONF_ALARM_CODE] or None},
+                ): PASSWORD,
                 vol.Required(
-                    CONF_REQUIRE_CODE, default=current[CONF_REQUIRE_CODE]
-                ): BooleanSelector(),
+                    CONF_CODE_REQUIRED_FOR, default=current[CONF_CODE_REQUIRED_FOR]
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=CODE_ACTIONS,
+                        multiple=True,
+                        translation_key=CONF_CODE_REQUIRED_FOR,
+                    )
+                ),
                 vol.Required(
                     CONF_EXTENDED_HEADER, default=current[CONF_EXTENDED_HEADER]
                 ): BooleanSelector(),

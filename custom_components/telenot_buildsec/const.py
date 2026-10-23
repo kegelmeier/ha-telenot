@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Final
 
-DOMAIN: Final = "telenot"
+DOMAIN: Final = "telenot_buildsec"
 MANUFACTURER: Final = "Telenot"
 
 CONF_ACCESS_LEVEL: Final = "access_level"
@@ -25,12 +25,18 @@ CONF_IDLE_TIMEOUT: Final = "idle_timeout"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_ARMED_AWAY_SOURCE: Final = "armed_away_source"
 CONF_ARMED_HOME_SOURCE: Final = "armed_home_source"
-CONF_REQUIRE_CODE: Final = "require_code"
+CONF_ALARM_CODE: Final = "alarm_code"
+CONF_CODE_REQUIRED_FOR: Final = "code_required_for"
 CONF_ARM_SEQUENCE: Final = "arm_sequence"
 CONF_EXTENDED_HEADER: Final = "extended_header"
 
 MODE_PERSISTENT: Final = "persistent"
 MODE_ON_DEMAND: Final = "on_demand"
+
+ACTION_ARM_AWAY: Final = "arm_away"
+ACTION_ARM_HOME: Final = "arm_home"
+ACTION_DISARM: Final = "disarm"
+CODE_ACTIONS: Final = [ACTION_ARM_AWAY, ACTION_ARM_HOME, ACTION_DISARM]
 
 SEQUENCE_AUTO: Final = "auto"
 SEQUENCE_CODE: Final = "code"
@@ -51,7 +57,8 @@ DEFAULT_OPTIONS: Final = {
     CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
     CONF_ARMED_AWAY_SOURCE: SOURCE_AUTO,
     CONF_ARMED_HOME_SOURCE: SOURCE_AUTO,
-    CONF_REQUIRE_CODE: False,
+    CONF_ALARM_CODE: "",
+    CONF_CODE_REQUIRED_FOR: [ACTION_ARM_AWAY, ACTION_ARM_HOME, ACTION_DISARM],
     CONF_ARM_SEQUENCE: SEQUENCE_AUTO,
     CONF_EXTENDED_HEADER: False,
 }
