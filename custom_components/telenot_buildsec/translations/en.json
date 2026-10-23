@@ -80,16 +80,18 @@
           "armed_away_source": "Indicator for 'armed away'",
           "armed_home_source": "Indicator for 'armed home'",
           "arm_sequence": "Arm / disarm key sequence",
-          "require_code": "Require code in Home Assistant",
-          "extended_header": "Use extended Telenot protocol header (experimental)"
+          "extended_header": "Use extended Telenot protocol header (experimental)",
+          "alarm_code": "Alarm code (Home Assistant)",
+          "code_required_for": "Require the alarm code for"
         },
         "data_description": {
           "connection_mode": "Persistent keeps the remote session open for real-time updates but blocks the BuildSec app. On demand connects only to refresh or send commands.",
           "armed_away_source": "Keypad indicator that is lit when the system is armed externally",
           "armed_home_source": "Keypad indicator that is lit when the system is armed internally",
           "arm_sequence": "How Home Assistant enters the code after pressing the arm/disarm key",
-          "require_code": "If enabled, the code entered in Home Assistant is sent to the panel instead of the stored keypad code",
-          "extended_header": "Off (recommended): plain VdS 2465 header, as used by the BuildSec iOS app and confirmed on a real panel. On: Telenot protocol extension used by the Android app, not verified on real hardware."
+          "extended_header": "Off (recommended): plain VdS 2465 header, as used by the BuildSec iOS app and confirmed on a real panel. On: Telenot protocol extension used by the Android app, not verified on real hardware.",
+          "alarm_code": "Checked by Home Assistant and never sent to the panel (the panel always gets the stored keypad code). Leave empty to never ask for a code.",
+          "code_required_for": "Actions that need the alarm code. A wrong code never reaches the panel. Home Assistant has one switch for both arm modes: if one needs the code, its keypad also opens for the other, but only the selected mode checks it."
         }
       }
     }
@@ -174,6 +176,13 @@
         "switch_15": "Switching function 15",
         "switch_16": "Switching function 16"
       }
+    },
+    "code_required_for": {
+      "options": {
+        "arm_away": "Arm away",
+        "arm_home": "Arm home",
+        "disarm": "Disarm"
+      }
     }
   },
   "entity": {
@@ -195,6 +204,9 @@
       },
       "area": {
         "name": "Indicator area {index}"
+      },
+      "area_state": {
+        "name": "State"
       }
     },
     "switch": {
@@ -203,6 +215,9 @@
       },
       "area_lock": {
         "name": "Indicator area {index} locked"
+      },
+      "area_locked": {
+        "name": "Locked"
       }
     },
     "sensor": {
@@ -258,6 +273,24 @@
       "key_function": {
         "name": "Function key"
       }
+    },
+    "event": {
+      "event_log": {
+        "name": "Event log",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "armed_away": "Armed away",
+              "armed_home": "Armed home",
+              "disarmed": "Disarmed",
+              "triggered": "Alarm",
+              "fault": "Fault",
+              "fault_cleared": "Fault cleared",
+              "command_failed": "Command failed"
+            }
+          }
+        }
+      }
     }
   },
   "services": {
@@ -270,6 +303,11 @@
           "description": "Space separated: digits, ok, esc, up, down, arm_away, arm_home, disarm, function or 0xNN"
         }
       }
+    }
+  },
+  "exceptions": {
+    "wrong_code": {
+      "message": "Wrong or missing alarm code"
     }
   }
 }

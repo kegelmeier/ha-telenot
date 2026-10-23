@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/kegelmeier/ha-telenot/main/custom_components/telenot/brand/dark_logo.png">
-  <img src="https://raw.githubusercontent.com/kegelmeier/ha-telenot/main/custom_components/telenot/brand/logo.png" alt="Telenot" width="240">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/kegelmeier/ha-telenot/main/custom_components/telenot_buildsec/brand/dark_logo.png">
+  <img src="https://raw.githubusercontent.com/kegelmeier/ha-telenot/main/custom_components/telenot_buildsec/brand/logo.png" alt="Telenot" width="240">
 </picture>
 
 # Telenot (BuildSec)
@@ -15,6 +15,7 @@ panels (complex400 / compact easy), speaking the protocol of the official
 [![GitHub Release][release-shield]][releases]
 [![License][license-shield]][license]
 ![HA Min Version][ha-shield]
+[![Validate][validate-shield]][validate]
 
 [![Open in HACS][hacs-repo-badge]][hacs-repo]
 
@@ -37,26 +38,45 @@ against a decrypted capture of the BuildSec iOS app talking to a real panel (see
 >
 > Reports with a debug log are very welcome.
 
+> [!CAUTION]
+> **Security notice.** This is an unofficial community project. It is **not certified by VdS,
+> not approved by Telenot** and not a replacement for a certified alarm transmission or
+> monitoring service. Connecting third-party software to an intrusion alarm panel changes its
+> security properties: anyone who controls your Home Assistant, or the network path to the
+> panel's IP interface, may be able to read the system state or **arm and disarm the system**,
+> and automations can do so without a code. This may affect a VdS classification, the
+> conditions of your insurance or your installer's warranty, so check with your installer and
+> insurer first. Secure Home Assistant and the panel interface accordingly: strong
+> credentials, no exposure of the panel port to the internet, a separate network where possible.
+
 ## ✨ Features
 
 **Remote keypad**
 - Live 2×16 keypad display (two sensors), pushed by the panel in real time
-- Every keypad key as a button (disabled by default) and a `telenot.send_keys` service
+- Every keypad key as a button (disabled by default) and a `telenot_buildsec.send_keys` service
 
 **Alarm**
 - `alarm_control_panel` with arm away (ES), arm home (IS) and disarm (US); the code is
   entered automatically when the display asks for it
 - Configurable armed-state detection (LED, indicator area, switching function or display text)
+- Optional Home Assistant alarm code, separately for arm away, arm home and disarm; a wrong
+  code never reaches the panel
+- Event log entity: armed, disarmed, alarm and fault as reported by the panel, plus commands
+  from Home Assistant that failed and why
 - Alarm, fault (Störung), walk test and operation indicators
 
 **Areas & switching functions**
 - 32 indicator areas (Meldebereiche) and 32 area locks (sperren/bypass)
 - 16 switching functions (Schaltfunktionen) as switches
 - Named from the label texts stored in the panel; only labelled ones are enabled
+- Each labelled indicator area becomes its own device (a child of the panel) with its state
+  and lock switch, and a device class guessed from the label (window, door, motion, smoke, …)
 
 **Connection**
 - Persistent session with automatic reconnect, or on-demand mode so the BuildSec app stays usable
 - Never retries wrong credentials (avoids keypad lockouts and manipulation reports)
+- After a (re)connect, entities stay unavailable until the panel has sent its full status, so a
+  stale state is never shown as current
 - German and English translations, diagnostics with secrets redacted
 
 ## 📦 Installation
@@ -74,7 +94,7 @@ against a decrypted capture of the BuildSec iOS app talking to a real panel (see
 
 ### Manual
 
-1. Copy `custom_components/telenot/` into your `config/custom_components/` directory.
+1. Copy `custom_components/telenot_buildsec/` into your `config/custom_components/` directory.
 2. Restart Home Assistant.
 
 ## ⚙️ Configuration
@@ -111,7 +131,8 @@ integration stops and asks you to re-authenticate instead of retrying.
 | **Connection mode** | Persistent | *Persistent* = real-time; *On demand* = connect every refresh interval, disconnect after the idle timeout |
 | **Indicator for armed away / home** | Automatic | Which LED, area, switching function or display text means “armed” (see below) |
 | **Arm/disarm key sequence** | Automatic | *Automatic* enters the code only when the display asks; *Always* = key → code → OK; *Key only* |
-| **Require code in Home Assistant** | Off | Send the code typed in the HA UI instead of the stored one |
+| **Alarm code (Home Assistant)** | empty | Checked by Home Assistant, never sent to the panel. Empty = never ask for a code |
+| **Require the alarm code for** | all | Any of arm away, arm home, disarm. Home Assistant has one “code to arm” switch: if one arm mode needs the code, its keypad also opens for the other, but only the selected mode checks it |
 | **Extended Telenot protocol header** | Off | Experimental: the Android app's protocol extension instead of the plain VdS header confirmed on a real panel |
 
 ### How “armed” is detected
@@ -142,9 +163,14 @@ watch the LED and display sensors while arming at a real keypad and pick the mat
 | Area lock 1–32 | Switch | Lock/bypass an area (yellow LED) |
 | Display line 1 / 2 | Sensor | Keypad LCD text |
 | Buzzer, Free LED 1–4 | Sensor | Buzzer pattern, LED colour |
+| Event log | Event | `armed_away`, `armed_home`, `disarmed`, `triggered`, `fault`, `fault_cleared`, `command_failed` with source, action, reason and display text |
 | Keypad keys | Button | Every key (disabled by default), e.g. for a keypad card |
 
-Service `telenot.send_keys` presses arbitrary keys, e.g. `keys: "esc down down ok"`.
+Labelled indicator areas appear as their own devices under the panel, each with a *State*
+binary sensor and a *Locked* switch. If the guessed device class is wrong, change it with
+*Show as* in the entity settings.
+
+Service `telenot_buildsec.send_keys` presses arbitrary keys, e.g. `keys: "esc down down ok"`.
 Menu keys can change the panel's state, so use it with care.
 
 ## 🔍 How it works
@@ -175,13 +201,17 @@ Protocol notes: [transport](docs/protocol-01-transport.md) ·
   hiXserver), QR-code import and installer parameterisation.
 - Brand icon/logo are bundled and served via the Home Assistant brands proxy API
   (requires **Home Assistant 2026.3+**).
+- The panel always gets the stored keypad code. The optional Home Assistant alarm code is a
+  separate gate in Home Assistant only.
+- Unlike the panel's serial GMS interface, the BuildSec keypad channel has no “ready to arm”
+  information, so there are no readiness sensors.
 
 Enable debug logging to see every decrypted telegram:
 
 ```yaml
 logger:
   logs:
-    custom_components.telenot: debug
+    custom_components.telenot_buildsec: debug
 ```
 
 ### Capturing the BuildSec app yourself
@@ -200,7 +230,14 @@ python3.14 -m venv .venv
 ```
 
 `tests/fake_panel.py` simulates a panel (S2 master + keypad). The protocol library lives in
-`custom_components/telenot/pytelenot/` and has no Home Assistant dependency.
+`custom_components/telenot_buildsec/pytelenot/` and has no Home Assistant dependency.
+
+## 🙏 Credits
+
+Several ideas (alarm code per action, event log, child devices per area, availability only
+after a full status, CI validation, the security notice) were inspired by
+[benji2k2/ha_telenot](https://github.com/benji2k2/ha_telenot), which connects to the
+complex 400 over its serial GMS interface instead. No code was copied.
 
 ## ⚠️ Disclaimer
 
@@ -223,8 +260,10 @@ trademarks and brand images.
 [release-shield]: https://img.shields.io/github/v/release/kegelmeier/ha-telenot?style=for-the-badge
 [license]: https://github.com/kegelmeier/ha-telenot/blob/main/LICENSE
 [license-shield]: https://img.shields.io/github/license/kegelmeier/ha-telenot?style=for-the-badge
-[ha-shield]: https://img.shields.io/badge/Home%20Assistant-2025.8%2B-41BDF5.svg?style=for-the-badge&logo=home-assistant&logoColor=white
+[ha-shield]: https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5.svg?style=for-the-badge&logo=home-assistant&logoColor=white
 [hacs-repo]: https://my.home-assistant.io/redirect/hacs_repository/?owner=kegelmeier&repository=ha-telenot&category=integration
 [hacs-repo-badge]: https://my.home-assistant.io/badges/hacs_repository.svg
-[config-flow]: https://my.home-assistant.io/redirect/config_flow_start/?domain=telenot
+[config-flow]: https://my.home-assistant.io/redirect/config_flow_start/?domain=telenot_buildsec
 [config-flow-badge]: https://my.home-assistant.io/badges/config_flow_start.svg
+[validate]: https://github.com/kegelmeier/ha-telenot/actions/workflows/validate.yml
+[validate-shield]: https://img.shields.io/github/actions/workflow/status/kegelmeier/ha-telenot/validate.yml?branch=main&style=for-the-badge&label=Validate

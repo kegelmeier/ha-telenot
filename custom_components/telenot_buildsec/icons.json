@@ -1,0 +1,39 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "walk_test": { "default": "mdi:walk" },
+      "area": { "default": "mdi:shield-outline", "state": { "on": "mdi:shield-alert" } },
+      "area_state": { "default": "mdi:shield-outline", "state": { "on": "mdi:shield-alert" } }
+    },
+    "switch": {
+      "switching_function": { "default": "mdi:toggle-switch-variant-off", "state": { "on": "mdi:toggle-switch-variant" } },
+      "area_lock": { "default": "mdi:lock-open-variant-outline", "state": { "on": "mdi:lock" } },
+      "area_locked": { "default": "mdi:lock-open-variant-outline", "state": { "on": "mdi:lock" } }
+    },
+    "sensor": {
+      "display_line": { "default": "mdi:text-box-outline" },
+      "buzzer": { "default": "mdi:volume-high", "state": { "off": "mdi:volume-off" } }
+    },
+    "event": {
+      "event_log": {
+        "default": "mdi:history",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "armed_away": "mdi:shield-lock",
+              "armed_home": "mdi:shield-home",
+              "disarmed": "mdi:shield-off",
+              "triggered": "mdi:bell-ring",
+              "fault": "mdi:alert",
+              "fault_cleared": "mdi:check-circle-outline",
+              "command_failed": "mdi:close-circle-outline"
+            }
+          }
+        }
+      }
+    }
+  },
+  "services": {
+    "send_keys": { "service": "mdi:dialpad" }
+  }
+}

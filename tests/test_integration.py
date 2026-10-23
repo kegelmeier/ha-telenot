@@ -12,7 +12,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.telenot.const import (
+from custom_components.telenot_buildsec.const import (
     CONF_ACCESS_LEVEL,
     CONF_FREISCHALTCODE,
     CONF_KEYPAD_ADDRESS,
@@ -42,6 +42,20 @@ async def wait_for(predicate, timeout: float = 5) -> None:
             return
         await asyncio.sleep(0.05)
     raise AssertionError("condition not reached")
+
+
+async def wait_for_reload(hass: HomeAssistant, entry, old) -> object:
+    """New area labels reload the entry (area devices); return the new coordinator."""
+    await wait_for(
+        lambda: (
+            getattr(entry, "runtime_data", old) is not old
+            and entry.state is config_entries.ConfigEntryState.LOADED
+            and entry.runtime_data.available
+        ),
+        timeout=10,
+    )
+    await hass.async_block_till_done()
+    return entry.runtime_data
 
 
 async def test_config_flow(hass: HomeAssistant, fake_panel: FakePanel) -> None:
@@ -110,8 +124,8 @@ async def test_setup_and_control(hass: HomeAssistant, fake_panel: FakePanel) -> 
     # labels are downloaded in the background and enable labelled entities
     await wait_for(lambda: coordinator.labels.crc == 0x1234)
     assert coordinator.labels.free_leds == {1: "Extern scharf"}
+    coordinator = await wait_for_reload(hass, entry, coordinator)
     registry = er.async_get(hass)
-    await hass.async_block_till_done()
     area1 = registry.async_get_entity_id("binary_sensor", DOMAIN, "panel:area_info_1")
     area2 = registry.async_get_entity_id("binary_sensor", DOMAIN, "panel:area_info_2")
     assert registry.async_get(area1).disabled_by is None
@@ -180,7 +194,7 @@ async def test_setup_and_control(hass: HomeAssistant, fake_panel: FakePanel) -> 
 
 
 async def test_reconnect(hass: HomeAssistant, fake_panel: FakePanel, monkeypatch) -> None:
-    monkeypatch.setattr("custom_components.telenot.coordinator.asyncio.sleep", _fast_sleep)
+    monkeypatch.setattr("custom_components.telenot_buildsec.coordinator.asyncio.sleep", _fast_sleep)
     entry = MockConfigEntry(
         domain=DOMAIN, title="Telenot 127.0.0.1", data=entry_data(fake_panel), unique_id="panel"
     )
@@ -216,8 +230,8 @@ async def test_auth_failure_starts_reauth(hass: HomeAssistant, fake_panel: FakeP
 
 
 async def test_on_demand_mode(hass: HomeAssistant, fake_panel: FakePanel, monkeypatch) -> None:
-    monkeypatch.setattr("custom_components.telenot.coordinator.asyncio.sleep", _fast_sleep)
-    monkeypatch.setattr("custom_components.telenot.coordinator.SNAPSHOT_DELAY", 0.3)
+    monkeypatch.setattr("custom_components.telenot_buildsec.coordinator.asyncio.sleep", _fast_sleep)
+    monkeypatch.setattr("custom_components.telenot_buildsec.coordinator.SNAPSHOT_DELAY", 0.3)
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Telenot 127.0.0.1",
@@ -229,6 +243,8 @@ async def test_on_demand_mode(hass: HomeAssistant, fake_panel: FakePanel, monkey
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     coordinator = entry.runtime_data
+    await wait_for(lambda: coordinator.labels.crc == 0x1234)
+    coordinator = await wait_for_reload(hass, entry, coordinator)
     assert hass.states.get("alarm_control_panel.telenot_127_0_0_1").state == "disarmed"
     assert hass.states.get("sensor.telenot_127_0_0_1_display_line_2").state == "Unscharf"
     # idle disconnect (labels download keeps it open first)
@@ -242,7 +258,9 @@ async def test_on_demand_mode(hass: HomeAssistant, fake_panel: FakePanel, monkey
         blocking=True,
     )
     await wait_for(
-        lambda: hass.states.get("alarm_control_panel.telenot_127_0_0_1").state
-        == AlarmControlPanelState.ARMED_HOME
+        lambda: (
+            hass.states.get("alarm_control_panel.telenot_127_0_0_1").state
+            == AlarmControlPanelState.ARMED_HOME
+        )
     )
     assert await hass.config_entries.async_unload(entry.entry_id)

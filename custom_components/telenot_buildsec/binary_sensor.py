@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -20,6 +21,30 @@ from .entity import TelenotEntity
 from .pytelenot import Led, PanelState
 
 PARALLEL_UPDATES = 0
+
+# Guess what an indicator area is from its label; users can change it with "Show as".
+_DEVICE_CLASS_HINTS: tuple[tuple[re.Pattern[str], BinarySensorDeviceClass], ...] = (
+    (re.compile(r"sabot|tamper", re.I), BinarySensorDeviceClass.TAMPER),
+    (re.compile(r"rauch|smoke|brand|feuer|fire", re.I), BinarySensorDeviceClass.SMOKE),
+    (re.compile(r"wasser|water|leck|leak|flut", re.I), BinarySensorDeviceClass.MOISTURE),
+    (re.compile(r"fenster|window|dachluk|oberlicht", re.I), BinarySensorDeviceClass.WINDOW),
+    (re.compile(r"garage|\btor\b|gate", re.I), BinarySensorDeviceClass.GARAGE_DOOR),
+    (re.compile(r"t(ü|ue|u)r|door|eingang|entrance", re.I), BinarySensorDeviceClass.DOOR),
+    (
+        re.compile(r"bewegung|\bbwm\b|\bpir\b|motion|präsenz|presence", re.I),
+        BinarySensorDeviceClass.MOTION,
+    ),
+    (re.compile(r"glas|glass|erschütter|vibration", re.I), BinarySensorDeviceClass.VIBRATION),
+)
+
+
+def guess_device_class(label: str | None) -> BinarySensorDeviceClass | None:
+    """Device class from an indicator-area label, or None for a generic sensor."""
+    if label:
+        for pattern, device_class in _DEVICE_CLASS_HINTS:
+            if pattern.search(label):
+                return device_class
+    return None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -119,21 +144,15 @@ class TelenotConnectionSensor(TelenotEntity, BinarySensorEntity):
 class TelenotAreaSensor(TelenotEntity, BinarySensorEntity):
     """Red indicator LED of a Meldebereich (meaning depends on panel programming)."""
 
-    _attr_translation_key = "area"
-
     def __init__(self, coordinator: TelenotCoordinator, index: int) -> None:
-        """Initialise."""
-        super().__init__(coordinator, f"area_info_{index}")
+        """Initialise; labelled areas get their own device named as in the panel."""
+        super().__init__(coordinator, f"area_info_{index}", area=index)
         self._index = index
-        self._attr_entity_registry_enabled_default = index in coordinator.labels.areas
+        label = coordinator.labels.areas.get(index)
+        self._attr_entity_registry_enabled_default = label is not None
+        self._attr_translation_key = "area_state" if self.has_area_device else "area"
         self._attr_translation_placeholders = {"index": str(index)}
-
-    @property
-    def name(self) -> str | None:
-        """Use the panel's label when known."""
-        if label := self.coordinator.labels.areas.get(self._index):
-            return label
-        return super().name
+        self._attr_device_class = guess_device_class(label)
 
     @property
     def is_on(self) -> bool:

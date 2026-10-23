@@ -17,7 +17,14 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import CONF_ARMED_AWAY_SOURCE, CONF_ARMED_HOME_SOURCE, CONF_REQUIRE_CODE
+from .const import (
+    ACTION_ARM_AWAY,
+    ACTION_ARM_HOME,
+    ACTION_DISARM,
+    CONF_ALARM_CODE,
+    CONF_ARMED_AWAY_SOURCE,
+    CONF_ARMED_HOME_SOURCE,
+)
 from .coordinator import TelenotConfigEntry
 from .entity import TelenotEntity
 from .pytelenot import Key
@@ -82,9 +89,18 @@ class TelenotAlarmPanel(TelenotEntity, AlarmControlPanelEntity):
     def __init__(self, coordinator) -> None:
         """Initialise."""
         super().__init__(coordinator, "alarm")
-        require_code = coordinator.options[CONF_REQUIRE_CODE]
-        self._attr_code_format = CodeFormat.NUMBER if require_code else None
-        self._attr_code_arm_required = require_code
+        # The alarm code is checked by Home Assistant and never sent to the panel.
+        # HA has a single "code needed to arm" flag: if either arm mode needs the code,
+        # the keypad opens for both, but only the selected mode checks it.
+        actions = (ACTION_ARM_AWAY, ACTION_ARM_HOME, ACTION_DISARM)
+        if any(coordinator.code_required(action) for action in actions):
+            code = str(coordinator.options[CONF_ALARM_CODE])
+            self._attr_code_format = CodeFormat.NUMBER if code.isdigit() else CodeFormat.TEXT
+        else:
+            self._attr_code_format = None
+        self._attr_code_arm_required = coordinator.code_required(
+            ACTION_ARM_AWAY
+        ) or coordinator.code_required(ACTION_ARM_HOME)
 
     @property
     def alarm_state(self) -> AlarmControlPanelState:

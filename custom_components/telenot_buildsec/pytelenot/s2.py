@@ -487,12 +487,16 @@ class S2Session:
         if telegram.ik == IK_POLL and telegram.nk == NK_POLLTIME_ACK:
             self._polltime_acked = True
             return
-        if telegram.ik == IK_DATA and telegram.nk == NK_USERDATA and telegram.data:
-            if self._on_userdata is not None:
-                try:
-                    self._on_userdata(telegram.data)
-                except Exception:  # noqa: BLE001 - never kill the transport
-                    _LOGGER.exception("Error handling user data %s", telegram.data.hex())
+        if (
+            telegram.ik == IK_DATA
+            and telegram.nk == NK_USERDATA
+            and telegram.data
+            and self._on_userdata is not None
+        ):
+            try:
+                self._on_userdata(telegram.data)
+            except Exception:  # noqa: BLE001 - never kill the transport
+                _LOGGER.exception("Error handling user data %s", telegram.data.hex())
 
     def _fail_pending(self, error: Exception) -> None:
         jobs = [self._inflight] if self._inflight else []
@@ -512,10 +516,8 @@ class S2Session:
             task.cancel()
         if self._writer is not None:
             self._writer.close()
-            try:
+            with contextlib.suppress(OSError, TimeoutError):
                 await asyncio.wait_for(self._writer.wait_closed(), 2)
-            except (OSError, TimeoutError):
-                pass
         current = asyncio.current_task()
         for task in tasks:
             if task is not current:

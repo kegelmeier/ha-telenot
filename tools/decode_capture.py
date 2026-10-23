@@ -23,26 +23,56 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "telenot"))
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[1] / "custom_components" / "telenot_buildsec")
+)
 
 from pytelenot.buildsec import Key, lcd_decode, split_records  # noqa: E402
-from pytelenot.crypto import KEY_NUMBER_BETREIBER, KEY_NUMBER_PLAIN, derive_betreiber_key, unseal  # noqa: E402
+from pytelenot.crypto import KEY_NUMBER_PLAIN, derive_betreiber_key, unseal  # noqa: E402
 from pytelenot.s2 import S2Telegram  # noqa: E402
 
-IK_NAMES = {1: "SYNC_REQ", 2: "SYNC_RESP", 3: "POLL", 4: "DATA", 5: "ERR_IK", 6: "ERR_PK", 7: "SERVICE_REQ"}
-NK_NAMES = {1: "", 5: "POLLTIME_SET", 6: "POLLTIME_ACK", 9: "SESSION_CLOSE", 0xFC: "CANCELLED", 0xFD: "VERSION", 0xFE: "INVALID_ID"}
+IK_NAMES = {
+    1: "SYNC_REQ",
+    2: "SYNC_RESP",
+    3: "POLL",
+    4: "DATA",
+    5: "ERR_IK",
+    6: "ERR_PK",
+    7: "SERVICE_REQ",
+}
+NK_NAMES = {
+    1: "",
+    5: "POLLTIME_SET",
+    6: "POLLTIME_ACK",
+    9: "SESSION_CLOSE",
+    0xFC: "CANCELLED",
+    0xFD: "VERSION",
+    0xFE: "INVALID_ID",
+}
 KEY_NAMES = {k.value: k.name for k in Key}
 ST70_NAMES = {
-    0x92: "START operator", 0x94: "START installer", 0x9E: "START remote control",
-    0x8A: "START legacy operator", 0x8C: "START legacy installer",
-    0x93: "STARTED operator", 0x95: "STARTED installer", 0x9F: "STARTED remote control",
-    0x8B: "STARTED legacy operator", 0x8D: "STARTED legacy installer",
-    0x18: "GTYP request", 0x19: "GTYP", 0x23: "ERROR", 0x4B: "FERNVERB_OK", 0x8E: "END (iOS)",
-    0x98: "LABEL request", 0x99: "COM2BUS",
+    0x92: "START operator",
+    0x94: "START installer",
+    0x9E: "START remote control",
+    0x8A: "START legacy operator",
+    0x8C: "START legacy installer",
+    0x93: "STARTED operator",
+    0x95: "STARTED installer",
+    0x9F: "STARTED remote control",
+    0x8B: "STARTED legacy operator",
+    0x8D: "STARTED legacy installer",
+    0x18: "GTYP request",
+    0x19: "GTYP",
+    0x23: "ERROR",
+    0x4B: "FERNVERB_OK",
+    0x8E: "END (iOS)",
+    0x98: "LABEL request",
+    0x99: "COM2BUS",
 }
 
 
 # ---------------------------------------------------------------- pcap reading
+
 
 def read_packets(path: Path):
     """Yield (timestamp, linktype, frame) from pcap or pcapng."""
@@ -137,6 +167,7 @@ def tcp_segment(ip: bytes):
 
 # ---------------------------------------------------------------- reassembly
 
+
 class Direction:
     def __init__(self) -> None:
         self.segments: list[tuple[float, int, bytes]] = []
@@ -149,7 +180,9 @@ class Direction:
         base = self.isn if self.isn is not None else min(s for _, s, _ in self.segments)
         buf = bytearray()
         marks: list[tuple[int, float]] = []
-        for ts, seq, payload in sorted(self.segments, key=lambda s: ((s[1] - base) & 0xFFFFFFFF, s[0])):
+        for ts, seq, payload in sorted(
+            self.segments, key=lambda s: ((s[1] - base) & 0xFFFFFFFF, s[0])
+        ):
             rel = (seq - base) & 0xFFFFFFFF
             if rel + len(payload) <= len(buf):
                 continue  # retransmission
@@ -172,6 +205,7 @@ def envelopes(buf: bytes, marks: list[tuple[int, float]]):
 
 
 # ---------------------------------------------------------------- annotation
+
 
 def describe_userdata(data: bytes, from_panel: bool, show_code: bool) -> list[str]:
     if len(data) == 1 and not from_panel:
@@ -213,7 +247,7 @@ def describe_c2b(rec: bytes) -> str:
         on = [str(i + 1) for i in range(16) if bits >> i & 1]
         return f"SWITCHES on={','.join(on) or '-'}"
     if kind == 0xCD:
-        return f"LABEL {rec[1:4].hex(' ')} \"{lcd_decode(rec[4:])}\""
+        return f'LABEL {rec[1:4].hex(" ")} "{lcd_decode(rec[4:])}"'
     if kind == 0xCE:
         return f"KEY_ACK {rec[1:].hex(' ')}"
     if kind == 0xCF:
@@ -223,8 +257,11 @@ def describe_c2b(rec: bytes) -> str:
 
 # ---------------------------------------------------------------- main
 
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("pcap", type=Path)
     ap.add_argument("--port", type=int, help="panel TCP port (default: auto-detect)")
     ap.add_argument("--show-code", action="store_true", help="do not mask the keypad code")
@@ -256,7 +293,9 @@ def main() -> None:
         for (src, sport, dst, dport), d in sorted(flows.items()):
             n = sum(len(p) for _, _, p in d.segments)
             if n:
-                print(f"  {src}:{sport} -> {dst}:{dport}  {n} bytes  first={d.stream()[0][:8].hex(' ')}")
+                print(
+                    f"  {src}:{sport} -> {dst}:{dport}  {n} bytes  first={d.stream()[0][:8].hex(' ')}"
+                )
         return
 
     fsc = key = None
@@ -264,7 +303,9 @@ def main() -> None:
         if aes := os.environ.get("TELENOT_AES_KEY"):
             key = bytes.fromhex(aes)
         else:
-            raw = os.environ.get("TELENOT_FREISCHALTCODE") or getpass.getpass("Freischaltcode (16 hex, empty to skip): ")
+            raw = os.environ.get("TELENOT_FREISCHALTCODE") or getpass.getpass(
+                "Freischaltcode (16 hex, empty to skip): "
+            )
             fsc = bytes.fromhex(raw.strip()) if raw.strip() else None
 
     for panel, app in sessions:

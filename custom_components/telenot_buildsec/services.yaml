@@ -1,7 +1,7 @@
 send_keys:
   target:
     entity:
-      integration: telenot
+      integration: telenot_buildsec
       domain: alarm_control_panel
   fields:
     keys:

@@ -10,7 +10,7 @@ import asyncio
 import contextlib
 import struct
 
-from custom_components.telenot.pytelenot.crypto import (
+from custom_components.telenot_buildsec.pytelenot.crypto import (
     derive_betreiber_key,
     seal,
     unseal,
@@ -148,7 +148,7 @@ class FakePanel:
         return bytes([0xCD, puk, index, len(a), len(b)]) + a + b
 
     def _code_bytes(self) -> bytes:
-        from custom_components.telenot.pytelenot.buildsec import encode_code
+        from custom_components.telenot_buildsec.pytelenot.buildsec import encode_code
 
         return encode_code(self.code)
 

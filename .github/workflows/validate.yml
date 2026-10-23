@@ -1,0 +1,41 @@
+name: Validate
+
+# HACS and hassfest catch manifest, translation and brand mistakes that would otherwise
+# only show up in someone's Home Assistant log.
+on:
+  push:
+  pull_request:
+  schedule:
+    # Both validators follow rules that change with Home Assistant releases.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hacs/action@main
+        with:
+          category: integration
+
+  hassfest:
+    name: hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: home-assistant/actions/hassfest@master
+
+  tests:
+    name: Lint and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: pip install ruff pytest-homeassistant-custom-component
+      - run: ruff check custom_components tests tools
+      - run: ruff format --check custom_components tests tools
+      - run: python -m pytest -q

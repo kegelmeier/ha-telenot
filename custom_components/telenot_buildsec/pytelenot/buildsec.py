@@ -170,7 +170,7 @@ _BUZZER_BITS = (
     (0x02, Buzzer.LONG),
 )
 
-_LCD_FIX = {0xE1: 0xE4, 0xEF: 0xF6, 0xF5: 0xFC, 0xE8: 0x76}
+_LCD_FIX = {0xE1: 0xE4, 0xE2: 0xDF, 0xEF: 0xF6, 0xF5: 0xFC, 0xE8: 0x76}  # ä ß ö ü v
 _LCD_TEST = b"\xff" * 16
 
 
@@ -284,6 +284,8 @@ class PanelState:
     """Everything the virtual keypad shows."""
 
     connected: bool = False
+    # True once the panel has sent display text and LEDs after the (re)connect
+    complete: bool = False
     display: list[str] = field(default_factory=lambda: ["", ""])
     buzzer: Buzzer = Buzzer.OFF
     operation: Led = field(default_factory=Led)  # Betrieb
@@ -347,6 +349,7 @@ class BuildSecClient:
         self._key_ack: asyncio.Future[int] | None = None
         self._panel_response = 0
         self._display_changed = asyncio.Event()
+        self._seen: set[int] = set()
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -374,6 +377,7 @@ class BuildSecClient:
     async def connect(self, *, timeout: float = 30) -> None:
         """Open TCP/S2, start the remote service session and read the device type."""
         self.state = PanelState()
+        self._seen: set[int] = set()
         loop = asyncio.get_running_loop()
         self._started = loop.create_future()
         session: S2Session | None = None
@@ -592,9 +596,11 @@ class BuildSecClient:
             return False
         kind = block[0]
         if kind == C2B_LCD_TEXT:
-            return self._apply_lcd(block)
+            self._seen.add(kind)
+            return self._apply_lcd(block) | self._check_complete()
         if kind == C2B_LEDS_STEADY:
-            return self._apply_leds(block, blink=False)
+            self._seen.add(kind)
+            return self._apply_leds(block, blink=False) | self._check_complete()
         if kind == C2B_LEDS_BLINK:
             return self._apply_leds(block, blink=True)
         if kind == C2B_SWITCH_STATE and len(block) >= 3:
@@ -614,6 +620,12 @@ class BuildSecClient:
             return False
         _LOGGER.debug("Unhandled com2BUS block %s", block.hex(" "))
         return False
+
+    def _check_complete(self) -> bool:
+        if self.state.complete or not {C2B_LCD_TEXT, C2B_LEDS_STEADY} <= self._seen:
+            return False
+        self.state.complete = True
+        return True
 
     def _apply_lcd(self, block: bytes) -> bool:
         changed = False
