@@ -54,7 +54,7 @@ def test_seal_roundtrip_encrypted() -> None:
     telegram = bytes.fromhex("00000001 0000 00000002 04 82 04 0003 03 01 aabbcc".replace(" ", ""))
     env = seal(telegram, 42, key)
     assert env[:2] == b"\x00\x2a"
-    assert int.from_bytes(env[2:4], "big") == 256
+    assert int.from_bytes(env[2:4], "big") == 128
     out = unseal(42, env[4:], key)
     assert out is not None and out[6:] == telegram[6:]
     assert s2_checksum(out) == int.from_bytes(out[4:6], "big")
@@ -217,3 +217,24 @@ async def test_disconnect_detected(panel: FakePanel) -> None:
     await panel.drop_connection()
     await asyncio.wait_for(lost.wait(), 5)
     assert not client.connected
+
+
+async def test_default_uses_plain_vds_header_and_end_block(panel: FakePanel) -> None:
+    """Matches the iOS app on a real panel: PK=0x01 and St70 0x8E before closing."""
+    client = make_client(panel)
+    await client.connect()
+    await client.press(Key.OK)
+    assert panel.client_pk == 0x01
+    await client.disconnect()
+    await asyncio.wait_for(panel.session_closed.wait(), 3)
+
+
+async def test_extended_header(panel: FakePanel) -> None:
+    client = make_client(panel, extended_header=True)
+    await client.connect()
+    try:
+        assert panel.client_pk == 0x82
+        assert client.state.firmware == "2.05"
+    finally:
+        await client.disconnect()
+    await asyncio.wait_for(panel.session_closed.wait(), 3)

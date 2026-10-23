@@ -15,7 +15,7 @@ KEY_NUMBER_UNKNOWN = 0xFFFF
 KEY_NUMBER_BETREIBER = 9997  # "ComvisMci": key derived from the Freischaltcode
 RESERVED_KEY_NUMBERS = frozenset({0, 0xFFFF, *range(9990, 10000)})
 
-MIN_ENCRYPTED_LENGTH = 256
+MIN_ENCRYPTED_LENGTH = 128  # observed on a real panel + iOS app (Android source says 256)
 _ZERO_IV = bytes(16)
 
 

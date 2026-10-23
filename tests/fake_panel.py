@@ -70,6 +70,7 @@ class FakePanel:
         self._digits = ""
         self._outbox: list[bytes] = []
         self._writer: asyncio.StreamWriter | None = None
+        self.client_pk: int | None = None
 
     async def start(self) -> None:
         self.server = await asyncio.start_server(self._client, "127.0.0.1", 0)
@@ -119,6 +120,10 @@ class FakePanel:
         block = data[3:]
         kind = block[0]
         expected_code = self._code_bytes()
+        if kind == 0x8E:
+            assert block[1:4] == expected_code
+            self.session_closed.set()
+            return
         if kind in (0x92, 0x94, 0x9E, 0x8A, 0x8C):
             if self.reject_modern and kind in (0x92, 0x94):
                 self._outbox.append(st70(b"\x23\x14"))
@@ -199,6 +204,13 @@ class FakePanel:
         raw = unseal(k, await reader.readexactly(sl), key)
         assert raw is not None, "bad checksum from client"
         tc, _crc, rc, ik, pk, ln = struct.unpack_from(">IHIBBB", raw)
+        if self.client_pk is None:
+            self.client_pk = pk  # mirror the header the slave chose
+        assert pk == self.client_pk, "slave switched header"
+        if pk == 0x01:
+            if ik == 7:
+                assert tc == 0 and rc == 0, "VdS SERVICE_REQUEST must carry TC=RC=0"
+            return k, tc, rc, ik, 1, raw[13 : 13 + ln]
         assert pk == 0x82 and ln == 4
         nl, v, nk = struct.unpack_from(">HBB", raw, 13)
         return k, tc, rc, ik, nk, raw[17 : 17 + nl]
@@ -211,6 +223,7 @@ class FakePanel:
                 return result
 
     async def _session(self, reader, writer) -> None:
+        self.client_pk = None
         m = 0x10203040
         window = 0xFF if self.busy else 0x01
         sync = struct.pack(">IHIBBB", m, 0, 0, 1, 0x01, 1) + bytes([window])
@@ -233,7 +246,7 @@ class FakePanel:
                 writer.write(seal(sync, 0, None))
                 await writer.drain()
                 with contextlib.suppress(Exception):
-                    await asyncio.wait_for(reader.readexactly(4 + 256), 1)
+                    await asyncio.wait_for(reader.readexactly(4 + 128), 1)
             return
         assert k == self.key_number and ik == 2 and rc == m + 1
         my_tc = m
@@ -244,19 +257,25 @@ class FakePanel:
                 data_out, ik_out = self._outbox.pop(0), 4
             else:
                 data_out, ik_out = b"", 3
-            tel = (
-                struct.pack(
-                    ">IHIBBBHBB", my_tc, 0, slave_tc + 1, ik_out, 0x82, 4, len(data_out), 3, 1
+            if self.client_pk == 0x01:
+                tel = (
+                    struct.pack(">IHIBBB", my_tc, 0, slave_tc + 1, ik_out, 0x01, len(data_out))
+                    + data_out
                 )
-                + data_out
-            )
+            else:
+                tel = (
+                    struct.pack(
+                        ">IHIBBBHBB", my_tc, 0, slave_tc + 1, ik_out, 0x82, 4, len(data_out), 3, 1
+                    )
+                    + data_out
+                )
             writer.write(seal(tel, self.key_number, key))
             await writer.drain()
             k, tc, rc, ik, nk, data = await self._read_reply(reader, key)
             assert tc == slave_tc + 1, (hex(tc), hex(slave_tc), ik, nk)
             assert rc == my_tc + 1
             slave_tc = tc
-            if nk == 0x09:
+            if nk == 0x09 and self.client_pk == 0x82:
                 self.session_closed.set()
                 return
             if ik == 4 and nk == 0x05:

@@ -145,10 +145,17 @@ class S2Session:
         aes_key: bytes | None = None,
         freischaltcode: bytes | None = None,
         poll_time_ms: int = DEFAULT_POLL_TIME_MS,
+        extended_header: bool = False,
         on_userdata: Callable[[bytes], None] | None = None,
         on_closed: Callable[[Exception | None], None] | None = None,
     ) -> None:
-        """Initialise; ``freischaltcode`` is required for key number 9997."""
+        """Initialise; ``freischaltcode`` is required for key number 9997.
+
+        By default telegrams use the plain VdS 2465 header (PK=0x01), as the
+        BuildSec iOS app does (confirmed on a real panel). ``extended_header``
+        selects the Telenot protocol extension (PK=0x82, poll time, session
+        close) used by the Android app; not verified on real hardware.
+        """
         if key_number == KEY_NUMBER_BETREIBER and (
             freischaltcode is None or len(freischaltcode) != 8
         ):
@@ -163,6 +170,7 @@ class S2Session:
         self._static_key = aes_key
         self._freischaltcode = freischaltcode
         self._poll_time_ms = poll_time_ms
+        self._pk = PK_TELENOT if extended_header else PK_VDS
         self._on_userdata = on_userdata
         self._on_closed = on_closed
 
@@ -223,7 +231,7 @@ class S2Session:
         await self._submit(userdata, NK_USERDATA)
 
     async def close(self) -> None:
-        """End the session gracefully (SESSION_CLOSE) and close the socket."""
+        """End the session (SESSION_CLOSE with the extended header) and close the socket."""
         if self._closed:
             return
         self._closing.set()
@@ -301,7 +309,7 @@ class S2Session:
     async def _send_new(self, ik: int, nk: int = NK_USERDATA, data: bytes = b"") -> None:
         self._tc = (self._tc + 1) & MASK32
         self._rc = (self._rc + 1) & MASK32
-        self._last_sent = S2Telegram(self._tc, self._rc, ik, PK_TELENOT, nk, self._version, data)
+        self._last_sent = S2Telegram(self._tc, self._rc, ik, self._pk, nk, self._version, data)
         self._repetitions = 0
         await self._write(self._last_sent)
 
@@ -378,8 +386,8 @@ class S2Session:
                 break
             raise TelenotProtocolError(f"Unexpected telegram during sync: {telegram}")
 
-        # 3. Ask the panel to poll us every poll_time_ms (V >= 2).
-        if self._version >= 2:
+        # 3. Extended header: ask the panel to poll us every poll_time_ms (V >= 2).
+        if self._pk == PK_TELENOT and self._version >= 2:
             await self._send_new(IK_DATA, NK_POLLTIME_SET, self._poll_time_ms.to_bytes(2, "big"))
         else:
             await self._send_new(IK_POLL)
@@ -404,9 +412,7 @@ class S2Session:
                 if signal_task is not None and signal_task in done:
                     # Ask the master to poll us now instead of after the poll time.
                     service_requested = True
-                    await self._write(
-                        S2Telegram(self._tc, self._rc, IK_SERVICE_REQUEST, version=self._version)
-                    )
+                    await self._write(self._service_request())
                     continue
                 raise TelenotConnectionError("No telegram from panel (function monitoring)")
             item = self._get_task.result()
@@ -435,7 +441,7 @@ class S2Session:
                 self._handle_master(telegram)
 
                 if self._closing.is_set():
-                    if self._version >= 3:
+                    if self._pk == PK_TELENOT and self._version >= 3:
                         await self._send_new(IK_POLL, NK_SESSION_CLOSE)
                     await asyncio.sleep(SLAVE_POLL_DELAY)
                     return
@@ -455,6 +461,12 @@ class S2Session:
             await self._teardown()
             if self._on_closed is not None:
                 self._on_closed(error)
+
+    def _service_request(self) -> S2Telegram:
+        if self._pk == PK_VDS:
+            # The iOS app sends TC=RC=0 here (observed on a real panel).
+            return S2Telegram(0, 0, IK_SERVICE_REQUEST, PK_VDS)
+        return S2Telegram(self._tc, self._rc, IK_SERVICE_REQUEST, version=self._version)
 
     async def _next_job(self) -> _TxJob | None:
         try:

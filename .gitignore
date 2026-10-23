@@ -6,3 +6,5 @@ __pycache__/
 # reverse-engineering workspace: decompiled vendor code, local .NET SDK, APK extraction
 _re/
 *.apk
+*.pcap
+*.pcapng

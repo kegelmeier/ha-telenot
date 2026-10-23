@@ -35,6 +35,7 @@ from .const import (
     CONF_ACCESS_LEVEL,
     CONF_AES_KEY,
     CONF_ARM_SEQUENCE,
+    CONF_EXTENDED_HEADER,
     CONF_ARMED_AWAY_SOURCE,
     CONF_ARMED_HOME_SOURCE,
     CONF_CONNECTION_MODE,
@@ -314,6 +315,9 @@ class TelenotOptionsFlow(OptionsFlowWithReload):
                 ),
                 vol.Required(
                     CONF_REQUIRE_CODE, default=current[CONF_REQUIRE_CODE]
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_EXTENDED_HEADER, default=current[CONF_EXTENDED_HEADER]
                 ): BooleanSelector(),
             }
         )

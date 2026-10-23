@@ -80,14 +80,16 @@
           "armed_away_source": "Anzeige für 'extern scharf'",
           "armed_home_source": "Anzeige für 'intern scharf'",
           "arm_sequence": "Tastenfolge Scharf/Unscharf",
-          "require_code": "Code in Home Assistant abfragen"
+          "require_code": "Code in Home Assistant abfragen",
+          "extended_header": "Erweiterten Telenot-Protokollkopf verwenden (experimentell)"
         },
         "data_description": {
           "connection_mode": "Dauerhaft hält die Fernverbindung offen (Echtzeit), blockiert aber die BuildSec-App. Bei Bedarf verbindet nur zum Aktualisieren oder Schalten.",
           "armed_away_source": "Anzeige, die bei extern scharf leuchtet",
           "armed_home_source": "Anzeige, die bei intern scharf leuchtet",
           "arm_sequence": "Wie Home Assistant nach der Scharf-/Unscharftaste den Code eingibt",
-          "require_code": "Wenn aktiv, wird der in Home Assistant eingegebene Code statt des gespeicherten Bedienteilcodes gesendet"
+          "require_code": "Wenn aktiv, wird der in Home Assistant eingegebene Code statt des gespeicherten Bedienteilcodes gesendet",
+          "extended_header": "Aus (empfohlen): einfacher VdS-2465-Kopf wie in der BuildSec-iOS-App, an einer echten Zentrale bestätigt. An: Telenot-Protokollerweiterung der Android-App, nicht an echter Hardware geprüft."
         }
       }
     }

@@ -80,14 +80,16 @@
           "armed_away_source": "Indicator for 'armed away'",
           "armed_home_source": "Indicator for 'armed home'",
           "arm_sequence": "Arm / disarm key sequence",
-          "require_code": "Require code in Home Assistant"
+          "require_code": "Require code in Home Assistant",
+          "extended_header": "Use extended Telenot protocol header (experimental)"
         },
         "data_description": {
           "connection_mode": "Persistent keeps the remote session open for real-time updates but blocks the BuildSec app. On demand connects only to refresh or send commands.",
           "armed_away_source": "Keypad indicator that is lit when the system is armed externally",
           "armed_home_source": "Keypad indicator that is lit when the system is armed internally",
           "arm_sequence": "How Home Assistant enters the code after pressing the arm/disarm key",
-          "require_code": "If enabled, the code entered in Home Assistant is sent to the panel instead of the stored keypad code"
+          "require_code": "If enabled, the code entered in Home Assistant is sent to the panel instead of the stored keypad code",
+          "extended_header": "Off (recommended): plain VdS 2465 header, as used by the BuildSec iOS app and confirmed on a real panel. On: Telenot protocol extension used by the Android app, not verified on real hardware."
         }
       }
     }

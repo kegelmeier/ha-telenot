@@ -237,6 +237,8 @@ int num2 = Math.Max(256 - stream.Length, num);   // random bytes appended
 ```
 In practice every encrypted telegram is at least 256 bytes on the wire (+4 header), because SL ≥ 256. There is no padding when K=0.
 
+> **Real panel:** the iOS app and a real panel both use a **128-byte** minimum, and the plain VdS header instead of the Telenot extension. See [protocol-04-real-panel-capture.md](protocol-04-real-panel-capture.md).
+
 **[F]** What is encrypted: the **entire S2 telegram** (TC, CRC, RC, IK, PK, L, TNT extension, data, pad). Only the 4‑byte `K|SL` envelope is in clear. There is no MAC or HMAC. Integrity depends on the checksum, the counters and the frame validation.
 
 **[F]** Key‑number handling (`S2ProcedureSlave.VerifyKeyNumber`):
