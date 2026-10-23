@@ -54,6 +54,7 @@ from .pytelenot import (
     PanelState,
     TelenotAuthError,
     TelenotError,
+    TelenotKeyError,
     area_lock_key,
     switch_key,
 )
@@ -154,7 +155,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             return
         try:
             await self._connect()
-        except TelenotAuthError as err:
+        except (TelenotAuthError, TelenotKeyError) as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except TelenotError as err:
             _LOGGER.warning("Telenot panel not reachable yet, will retry: %s", err)
@@ -199,8 +200,10 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             await asyncio.sleep(backoff)
             try:
                 await self._connect()
-            except TelenotAuthError as err:
-                _LOGGER.error("Telenot panel rejected the keypad code: %s", err)
+            except (TelenotAuthError, TelenotKeyError) as err:
+                # Never keep retrying with wrong credentials: panels count failed
+                # attempts and may lock out or report manipulation.
+                _LOGGER.error("Telenot panel rejected the credentials: %s", err)
                 self.config_entry.async_start_reauth(self.hass)
                 return
             except TelenotError as err:
@@ -300,7 +303,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         """Poll in on-demand mode: connect, collect the pushed state, disconnect later."""
         try:
             await self._ensure_connected()
-        except TelenotAuthError as err:
+        except (TelenotAuthError, TelenotKeyError) as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except TelenotError as err:
             raise UpdateFailed(str(err)) from err
