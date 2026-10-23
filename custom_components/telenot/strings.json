@@ -1,0 +1,273 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Telenot panel",
+        "description": "Connect directly to the panel's IP interface (e.g. comXline) the same way the BuildSec app does. Only one remote session is possible at a time.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "access_level": "Access level",
+          "keypad_code": "Keypad code",
+          "keypad_address": "Virtual keypad address"
+        },
+        "data_description": {
+          "host": "IP address or hostname of the panel / transmitter",
+          "port": "TCP port configured for BuildSec access",
+          "access_level": "Same as in the BuildSec app",
+          "keypad_code": "Operator or installer code (max. 6 digits)",
+          "keypad_address": "com2BUS keypad address (0-15) enabled for app access"
+        }
+      },
+      "operator": {
+        "title": "Operator access",
+        "data": {
+          "freischaltcode": "Enabling code (Freischaltcode)"
+        },
+        "data_description": {
+          "freischaltcode": "16 hex characters, as entered in the BuildSec app"
+        }
+      },
+      "key": {
+        "title": "Encryption key",
+        "data": {
+          "key_number": "Key number",
+          "aes_key": "AES key"
+        },
+        "data_description": {
+          "key_number": "VdS key number (Schlüsselnummer)",
+          "aes_key": "32 hex characters"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Keypad code rejected",
+        "description": "The panel rejected the keypad code. Enter the current code.",
+        "data": {
+          "keypad_code": "Keypad code"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the panel",
+      "invalid_auth": "The panel rejected the keypad code or access level",
+      "busy": "Remote access is already in use (close the BuildSec app)",
+      "invalid_key": "Wrong key number or AES key / enabling code",
+      "remote_disabled": "App access is disabled in the panel",
+      "invalid_keypad_address": "Invalid keypad address",
+      "keypad_in_use": "Keypad address already in use, choose another",
+      "lan_not_allowed": "LAN connections are not allowed by the panel",
+      "ip_not_allowed": "This IP address is not authorised by the panel",
+      "panel_error": "The panel reported an error",
+      "invalid_code_format": "The code must consist of 1 to 6 digits",
+      "invalid_freischaltcode": "Must be 16 hexadecimal characters",
+      "invalid_aes_key": "Must be 32 hexadecimal characters",
+      "reserved_key_number": "This key number is reserved",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This panel is already configured",
+      "reauth_successful": "Re-authentication successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Telenot options",
+        "data": {
+          "connection_mode": "Connection mode",
+          "scan_interval": "Refresh interval (on demand)",
+          "idle_timeout": "Disconnect after idle (on demand)",
+          "armed_away_source": "Indicator for 'armed away'",
+          "armed_home_source": "Indicator for 'armed home'",
+          "arm_sequence": "Arm / disarm key sequence",
+          "require_code": "Require code in Home Assistant"
+        },
+        "data_description": {
+          "connection_mode": "Persistent keeps the remote session open for real-time updates but blocks the BuildSec app. On demand connects only to refresh or send commands.",
+          "armed_away_source": "Keypad indicator that is lit when the system is armed externally",
+          "armed_home_source": "Keypad indicator that is lit when the system is armed internally",
+          "arm_sequence": "How Home Assistant enters the code after pressing the arm/disarm key",
+          "require_code": "If enabled, the code entered in Home Assistant is sent to the panel instead of the stored keypad code"
+        }
+      }
+    }
+  },
+  "selector": {
+    "access_level": {
+      "options": {
+        "operator": "Operator (Betreiber)",
+        "installer": "Installer (Errichter)",
+        "remote_control": "Remote control (hipas)"
+      }
+    },
+    "connection_mode": {
+      "options": {
+        "persistent": "Persistent",
+        "on_demand": "On demand"
+      }
+    },
+    "arm_sequence": {
+      "options": {
+        "auto": "Automatic: enter code when the display asks for it",
+        "code": "Always: key, code, OK",
+        "key_only": "Key only"
+      }
+    },
+    "state_source": {
+      "options": {
+        "auto": "Automatic (from panel labels, else last display state)",
+        "lcd_latched": "Last arm state shown on the display / sent by Home Assistant",
+        "lcd": "Keypad display text",
+        "none": "Not used",
+        "led_1": "Free LED 1",
+        "led_2": "Free LED 2",
+        "led_3": "Free LED 3",
+        "led_4": "Free LED 4",
+        "area_1": "Indicator area 1",
+        "area_2": "Indicator area 2",
+        "area_3": "Indicator area 3",
+        "area_4": "Indicator area 4",
+        "area_5": "Indicator area 5",
+        "area_6": "Indicator area 6",
+        "area_7": "Indicator area 7",
+        "area_8": "Indicator area 8",
+        "area_9": "Indicator area 9",
+        "area_10": "Indicator area 10",
+        "area_11": "Indicator area 11",
+        "area_12": "Indicator area 12",
+        "area_13": "Indicator area 13",
+        "area_14": "Indicator area 14",
+        "area_15": "Indicator area 15",
+        "area_16": "Indicator area 16",
+        "area_17": "Indicator area 17",
+        "area_18": "Indicator area 18",
+        "area_19": "Indicator area 19",
+        "area_20": "Indicator area 20",
+        "area_21": "Indicator area 21",
+        "area_22": "Indicator area 22",
+        "area_23": "Indicator area 23",
+        "area_24": "Indicator area 24",
+        "area_25": "Indicator area 25",
+        "area_26": "Indicator area 26",
+        "area_27": "Indicator area 27",
+        "area_28": "Indicator area 28",
+        "area_29": "Indicator area 29",
+        "area_30": "Indicator area 30",
+        "area_31": "Indicator area 31",
+        "area_32": "Indicator area 32",
+        "switch_1": "Switching function 1",
+        "switch_2": "Switching function 2",
+        "switch_3": "Switching function 3",
+        "switch_4": "Switching function 4",
+        "switch_5": "Switching function 5",
+        "switch_6": "Switching function 6",
+        "switch_7": "Switching function 7",
+        "switch_8": "Switching function 8",
+        "switch_9": "Switching function 9",
+        "switch_10": "Switching function 10",
+        "switch_11": "Switching function 11",
+        "switch_12": "Switching function 12",
+        "switch_13": "Switching function 13",
+        "switch_14": "Switching function 14",
+        "switch_15": "Switching function 15",
+        "switch_16": "Switching function 16"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "alarm": {
+        "name": "Alarm"
+      },
+      "fault": {
+        "name": "Fault"
+      },
+      "walk_test": {
+        "name": "Walk test"
+      },
+      "operation": {
+        "name": "Operation"
+      },
+      "connection": {
+        "name": "Connection"
+      },
+      "area": {
+        "name": "Indicator area {index}"
+      }
+    },
+    "switch": {
+      "switching_function": {
+        "name": "Switching function {index}"
+      },
+      "area_lock": {
+        "name": "Indicator area {index} locked"
+      }
+    },
+    "sensor": {
+      "display_line": {
+        "name": "Display line {line}"
+      },
+      "buzzer": {
+        "name": "Buzzer",
+        "state": {
+          "off": "Off",
+          "1s": "1 s",
+          "3s": "3 s",
+          "intermittent": "Intermittent",
+          "beep_pause": "Beep with pause",
+          "continuous": "Continuous"
+        }
+      },
+      "free_led": {
+        "name": "LED {index}",
+        "state": {
+          "off": "Off",
+          "green": "Green",
+          "red": "Red",
+          "yellow": "Yellow"
+        }
+      }
+    },
+    "button": {
+      "key_digit": {
+        "name": "Key {digit}"
+      },
+      "key_ok": {
+        "name": "Key OK"
+      },
+      "key_esc": {
+        "name": "Key ESC"
+      },
+      "key_up": {
+        "name": "Key up"
+      },
+      "key_down": {
+        "name": "Key down"
+      },
+      "key_arm_away": {
+        "name": "Key arm away"
+      },
+      "key_arm_home": {
+        "name": "Key arm home"
+      },
+      "key_disarm": {
+        "name": "Key disarm"
+      },
+      "key_function": {
+        "name": "Function key"
+      }
+    }
+  },
+  "services": {
+    "send_keys": {
+      "name": "Send keys",
+      "description": "Press keys on the virtual keypad.",
+      "fields": {
+        "keys": {
+          "name": "Keys",
+          "description": "Space separated: digits, ok, esc, up, down, arm_away, arm_home, disarm, function or 0xNN"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+send_keys:
+  target:
+    entity:
+      integration: telenot
+      domain: alarm_control_panel
+  fields:
+    keys:
+      required: true
+      example: "arm_away 1234 ok"
+      selector:
+        text:
