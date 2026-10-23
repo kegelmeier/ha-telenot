@@ -5,14 +5,14 @@ A custom integration that controls Telenot intrusion alarm panels (complex400 / 
 The protocol was reverse-engineered from the BuildSec APK (`com.TelenotElectronic.BuildSec`, .NET MAUI). The findings are in [`docs/`](docs/).
 
 > [!WARNING]
-> **Not validated on real hardware.** This integration has never been connected to a real Telenot panel. It was written purely from a static analysis of the BuildSec app and is tested only against a simulated panel written from the same analysis, so the tests show the code is self-consistent, not that it matches a real panel.
+> **Only partly validated.** The integration itself has not yet been run against a real panel. Its transport was corrected against a decrypted capture of the BuildSec **iOS** app talking to a real panel (see [`docs/protocol-04-real-panel-capture.md`](docs/protocol-04-real-panel-capture.md)): encryption, key derivation, handshake, login, device type, display and LED stream match. **Arming and disarming have not been observed yet.** The tests run against a simulated panel.
 >
 > **This controls a security system.** Until you have confirmed it on your own installation:
 > - do not rely on the alarm state shown in Home Assistant,
 > - verify every arm/disarm at a real keypad or in the BuildSec app,
 > - do not build security-relevant automations on it.
 >
-> Expected confidence per layer: encryption/framing high, session handling medium-high, keypad state medium, arm/disarm dialogue and armed-state detection low until tuned to your panel (see [Unverified points](#unverified-points)). Reports with a debug log are very welcome.
+> Expected confidence per layer: encryption/framing and login high (confirmed by capture), keypad display/LEDs medium-high, arm/disarm dialogue and armed-state detection low until tuned to your panel (see [Unverified points](#unverified-points)). Reports with a debug log are very welcome.
 
 ## How it works
 
@@ -21,7 +21,7 @@ BuildSec does not have "arm area N" commands. It is a **remote keypad**: it open
 | Layer | What happens |
 |---|---|
 | TCP | Plain TCP to the panel's IP interface (port as configured for BuildSec). |
-| VdS 2465‑S2 + Telenot extension | The panel is the protocol master and polls every 2 s. Telegrams are AES‑128‑CBC encrypted and checksummed with the Internet checksum. |
+| VdS 2465‑S2 | The panel is the protocol master and polls the app continuously. Telegrams are AES‑128‑CBC encrypted (padded to ≥128 bytes) and checksummed with the Internet checksum. Plain VdS header like the iOS app; the Android app's Telenot extension is available as an experimental option. |
 | Key | Operator access uses key number 9997, with a per-session key derived from the **Freischaltcode**. Installer / remote-control access uses your **key number + AES key**. |
 | Session | Satztyp 0x70 block `92/94/9E` + keypad code (packed BCD) + virtual keypad address. |
 | Keypad | The panel **pushes** LCD text, LEDs, buzzer and switching-function state. Commands are one-byte key codes (ES/IS/US, digits, OK, …). |
@@ -39,7 +39,7 @@ BuildSec does not have "arm area N" commands. It is a **remote keypad**: it open
 | Host / Port | IP or hostname of the panel / transmitter and the TCP port enabled for BuildSec. |
 | Access level | Operator (Betreiber), Installer (Errichter) or Remote control (hipas). |
 | Keypad code | Your operator code (≤ 6 digits). It must be enabled for remote/app use. |
-| Virtual keypad address | The com2BUS keypad address (0–15) the panel enables for app access (the app's demo uses 15). |
+| Virtual keypad address | The com2BUS keypad address (0–15) the panel enables for app access. Use the same one as your BuildSec app (often not the default 15; one real installation uses 5). |
 | Freischaltcode | Operator only: 16 hex characters. |
 | Key number + AES key | Installer / remote control only: VdS key number and 32 hex characters. |
 
@@ -74,16 +74,19 @@ The alarm panel's attributes show which indicator is currently used. If the stat
 - **Connection mode**: *persistent* (real-time, default) or *on demand* (connect every *refresh interval*, disconnect after *idle timeout*).
 - **Arm/disarm key sequence**: *automatic* (enter the code only when the display asks), *always* (key → code → OK) or *key only*.
 - **Require code in Home Assistant**: if enabled, the code typed in the HA UI is sent to the panel instead of the stored code.
+- **Extended Telenot protocol header** (experimental, off): use the Android app's protocol extension instead of the plain VdS header confirmed on a real panel.
 
 ## Unverified points
 
 Everything here is derived statically from the app. A packet capture or the first real connection should confirm:
 
-1. The default port of your transmitter (the app has none built in).
-2. Which checksum variant the panel uses on encrypted telegrams. We pad with zeros so both variants match, and accept either when receiving.
-3. Whether the panel pushes a full state snapshot right after login. Presumably yes; physical keypads get one.
-4. The exact arm/disarm dialogue on your panel, including how it refuses when zones are open. *Automatic* mode reacts to the display text.
-5. Whether the panel enforces its own idle timeout. The integration reconnects automatically with backoff.
+Confirmed by a real-panel capture: encryption and key derivation, 128-byte padding, plain VdS header, handshake, login, device type, label request, display and LED stream, and the initial state snapshot after login.
+
+Still open:
+
+1. The exact arm/disarm dialogue on your panel, including how it refuses when zones are open. *Automatic* mode reacts to the display text.
+2. What the display and LEDs show while armed (on one panel, free LEDs 1 and 2 are green while disarmed).
+3. Whether the panel enforces its own idle timeout. The integration reconnects automatically with backoff.
 
 Enable debug logging to see every decrypted telegram:
 
@@ -92,6 +95,10 @@ logger:
   logs:
     custom_components.telenot: debug
 ```
+
+### Capturing the BuildSec app yourself
+
+`tools/decode_capture.py` decrypts a packet capture of the BuildSec app (pcap/pcapng, e.g. from an iPhone via `rvictl` + `tcpdump`, or a FRITZ!Box capture). It asks for the Freischaltcode (or reads `TELENOT_AES_KEY`) and masks the keypad code. Captures and decoded output contain your panel's data, so do not post them unredacted.
 
 ## Not implemented (yet)
 

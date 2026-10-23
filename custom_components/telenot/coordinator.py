@@ -26,6 +26,7 @@ from .const import (
     CONF_ACCESS_LEVEL,
     CONF_AES_KEY,
     CONF_ARM_SEQUENCE,
+    CONF_EXTENDED_HEADER,
     CONF_ARMED_AWAY_SOURCE,
     CONF_ARMED_HOME_SOURCE,
     CONF_CONNECTION_MODE,
@@ -79,8 +80,8 @@ _DISARMED = re.compile(r"unscharf|disarmed", re.IGNORECASE)
 type TelenotConfigEntry = ConfigEntry[TelenotCoordinator]
 
 
-def create_client(data: dict[str, Any]) -> BuildSecClient:
-    """Build a protocol client from config entry data."""
+def create_client(data: dict[str, Any], options: dict[str, Any] | None = None) -> BuildSecClient:
+    """Build a protocol client from config entry data and options."""
     level = _ACCESS_LEVEL[data[CONF_ACCESS_LEVEL]]
     kwargs: dict[str, Any] = {}
     if level == AccessLevel.OPERATOR:
@@ -94,6 +95,7 @@ def create_client(data: dict[str, Any]) -> BuildSecClient:
         code=data[CONF_KEYPAD_CODE],
         access_level=level,
         keypad_address=int(data[CONF_KEYPAD_ADDRESS]),
+        extended_header=bool((options or {}).get(CONF_EXTENDED_HEADER, False)),
         **kwargs,
     )
 
@@ -117,7 +119,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             ),
             always_update=True,
         )
-        self.client = create_client(dict(entry.data))
+        self.client = create_client(dict(entry.data), dict(entry.options))
         self.labels = Labels()
         self.arming_target: AlarmControlPanelState | None = None
         # last arm state reported by the panel display (never assumed from our own commands)

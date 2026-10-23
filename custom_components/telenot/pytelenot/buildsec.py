@@ -51,6 +51,7 @@ ST70_GTYP_REQUEST = 0x18
 ST70_GTYP_DATA = 0x19
 ST70_ERROR = 0x23
 ST70_FERNVERB_OK = 0x4B
+ST70_END_SESSION = 0x8E  # sent by the iOS app before it disconnects (observed)
 ST70_COM2BUS_REQUEST = 0x98
 ST70_COM2BUS_ANSWER = 0x99
 
@@ -312,6 +313,7 @@ class BuildSecClient:
         key_number: int = KEY_NUMBER_PLAIN,
         aes_key: bytes | None = None,
         freischaltcode: bytes | None = None,
+        extended_header: bool = False,
     ) -> None:
         """Initialise. Operator access uses key 9997 derived from the Freischaltcode."""
         if not 0 <= keypad_address <= 15:
@@ -325,7 +327,9 @@ class BuildSecClient:
             "key_number": key_number,
             "aes_key": aes_key,
             "freischaltcode": freischaltcode,
+            "extended_header": extended_header,
         }
+        self._extended_header = extended_header
         self._host = host
         self._port = port
         self._s2: S2Session | None = None
@@ -420,7 +424,15 @@ class BuildSecClient:
         self._notify()
 
     async def disconnect(self) -> None:
-        """Close the session (SESSION_CLOSE) and the socket."""
+        """End the remote session and close the socket."""
+        if self._s2 is not None and self.state.connected and not self._extended_header:
+            # Like the iOS app: announce the end of the session, then close.
+            try:
+                await asyncio.wait_for(
+                    self._s2.send(st70_record(bytes([ST70_END_SESSION]) + self._code)), 5
+                )
+            except (TimeoutError, TelenotError) as err:
+                _LOGGER.debug("End-of-session block not acknowledged: %s", err)
         s2, self._s2 = self._s2, None
         was_connected = self.state.connected
         self.state.connected = False

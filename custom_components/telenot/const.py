@@ -27,6 +27,7 @@ CONF_ARMED_AWAY_SOURCE: Final = "armed_away_source"
 CONF_ARMED_HOME_SOURCE: Final = "armed_home_source"
 CONF_REQUIRE_CODE: Final = "require_code"
 CONF_ARM_SEQUENCE: Final = "arm_sequence"
+CONF_EXTENDED_HEADER: Final = "extended_header"
 
 MODE_PERSISTENT: Final = "persistent"
 MODE_ON_DEMAND: Final = "on_demand"
@@ -52,6 +53,7 @@ DEFAULT_OPTIONS: Final = {
     CONF_ARMED_HOME_SOURCE: SOURCE_AUTO,
     CONF_REQUIRE_CODE: False,
     CONF_ARM_SEQUENCE: SEQUENCE_AUTO,
+    CONF_EXTENDED_HEADER: False,
 }
 
 NUM_FREE_LEDS: Final = 4
