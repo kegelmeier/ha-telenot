@@ -116,7 +116,7 @@
     "state_source": {
       "options": {
         "auto": "Automatic (from panel labels, else last display state)",
-        "lcd_latched": "Last arm state shown on the display / sent by Home Assistant",
+        "lcd_latched": "Last arm state shown on the keypad display",
         "lcd": "Keypad display text",
         "none": "Not used",
         "led_1": "Free LED 1",
