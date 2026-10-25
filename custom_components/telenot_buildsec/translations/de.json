@@ -92,6 +92,18 @@
           "extended_header": "Aus (empfohlen): einfacher VdS-2465-Kopf wie in der BuildSec-iOS-App, an einer echten Zentrale bestätigt. An: Telenot-Protokollerweiterung der Android-App, nicht an echter Hardware geprüft.",
           "alarm_code": "Wird von Home Assistant geprüft und nie an die Zentrale gesendet (die Zentrale erhält immer den gespeicherten Bedienteilcode). Leer lassen, um nie nach einem Code zu fragen.",
           "code_required_for": "Aktionen, die den Alarmcode brauchen. Ein falscher Code erreicht die Zentrale nie. Home Assistant hat einen Schalter für beide Scharfschaltarten: braucht eine den Code, öffnet sich das Tastenfeld auch für die andere, geprüft wird nur die ausgewählte."
+        },
+        "sections": {
+          "led_labels": {
+            "name": "Beschriftung der Bedienteil-LEDs",
+            "description": "Text neben den vier freien LEDs, wie auf deinem Bedienteil (z. B. Intern Bereit, Extern Bereit, Intern Scharf, Extern Scharf). Gilt für die LED-Sensoren, die Bedienteil-Karte und die automatische Erkennung von scharf. Leer: Text aus der Zentrale, falls vorhanden.",
+            "data": {
+              "led_1": "LED 1",
+              "led_2": "LED 2",
+              "led_3": "LED 3",
+              "led_4": "LED 4"
+            }
+          }
         }
       }
     }

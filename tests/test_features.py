@@ -9,10 +9,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.telenot_buildsec.binary_sensor import guess_device_class
-from custom_components.telenot_buildsec.const import DOMAIN
+from custom_components.telenot_buildsec.const import CARD_URL, DOMAIN
 from custom_components.telenot_buildsec.pytelenot.buildsec import lcd_decode
 
 from .fake_panel import FakePanel
@@ -165,4 +166,69 @@ async def test_pause_releases_remote_access(
     await hass.services.async_call("switch", "turn_on", {"entity_id": remote}, blocking=True)
     await wait_for(lambda: coordinator.connected, timeout=10)
     await _state_is(hass, AlarmControlPanelState.DISARMED)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_led_labels_from_options(hass: HomeAssistant, fake_panel: FakePanel) -> None:
+    entry = await _setup(
+        hass, fake_panel, {"led_labels": {"led_2": "Intern Scharf", "led_3": "Extern Bereit"}}
+    )
+    state = hass.states.get(PANEL)
+    # option label wins over an empty panel text and drives the automatic detection
+    assert state.attributes["armed_home_indicator"] == "led_2"
+    assert state.attributes["armed_away_indicator"] == "led_1"  # panel text "Extern scharf"
+    assert hass.states.get("sensor.telenot_127_0_0_1_intern_scharf") is not None
+
+    keypad = state.attributes["keypad"]
+    assert [led["label"] for led in keypad["leds"]] == [
+        "Extern scharf",
+        "Intern Scharf",
+        "Extern Bereit",
+        None,
+    ]
+    assert keypad["leds"][1]["color"] == "off"
+    assert keypad["alarm"] == {"color": "off", "blinking": False}
+    assert len(keypad["display"]) == 2
+
+    await _call(hass, "alarm_arm_home")
+    await _state_is(hass, AlarmControlPanelState.ARMED_HOME)
+    await wait_for(
+        lambda: hass.states.get(PANEL).attributes["keypad"]["leds"][1]["color"] == "yellow"
+    )
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_options_flow_led_labels(hass: HomeAssistant, fake_panel: FakePanel) -> None:
+    entry = await _setup(hass, fake_panel)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] == "form"
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            "connection_mode": "persistent",
+            "scan_interval": 300,
+            "idle_timeout": 60,
+            "armed_away_source": "auto",
+            "armed_home_source": "auto",
+            "arm_sequence": "auto",
+            "code_required_for": [],
+            "extended_header": False,
+            "led_labels": {"led_1": " Intern Bereit ", "led_2": "", "led_4": "Extern Scharf"},
+        },
+    )
+    assert result["type"] == "create_entry"
+    assert entry.options["led_labels"] == {"led_1": "Intern Bereit", "led_4": "Extern Scharf"}
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_keypad_card_is_served(
+    hass: HomeAssistant, fake_panel: FakePanel, hass_client
+) -> None:
+    assert await async_setup_component(hass, "http", {})
+    entry = await _setup(hass, fake_panel)
+    client = await hass_client()
+    response = await client.get(CARD_URL)
+    assert response.status == 200
+    assert "telenot-keypad-card" in await response.text()
     assert await hass.config_entries.async_unload(entry.entry_id)

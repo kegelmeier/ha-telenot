@@ -81,8 +81,8 @@ class TelenotFreeLedSensor(TelenotEntity, SensorEntity):
 
     @property
     def name(self) -> str | None:
-        """Use the panel's label when known."""
-        if label := self.coordinator.labels.free_leds.get(self._index):
+        """Use the configured or panel label when known."""
+        if label := self.coordinator.led_label(self._index):
             return label
         return super().name
 

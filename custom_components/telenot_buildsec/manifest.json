@@ -1,6 +1,10 @@
 {
   "domain": "telenot_buildsec",
   "name": "Telenot (BuildSec)",
+  "after_dependencies": [
+    "frontend",
+    "http"
+  ],
   "codeowners": [
     "@kegelmeier"
   ],
@@ -14,5 +18,5 @@
     "custom_components.telenot_buildsec.pytelenot"
   ],
   "requirements": [],
-  "version": "0.3.0"
+  "version": "0.4.0"
 }

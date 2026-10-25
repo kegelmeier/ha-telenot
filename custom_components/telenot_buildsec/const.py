@@ -29,6 +29,7 @@ CONF_ALARM_CODE: Final = "alarm_code"
 CONF_CODE_REQUIRED_FOR: Final = "code_required_for"
 CONF_ARM_SEQUENCE: Final = "arm_sequence"
 CONF_EXTENDED_HEADER: Final = "extended_header"
+CONF_LED_LABELS: Final = "led_labels"  # section: {"led_1": "Intern Bereit", ...}
 
 MODE_PERSISTENT: Final = "persistent"
 MODE_ON_DEMAND: Final = "on_demand"
@@ -61,11 +62,15 @@ DEFAULT_OPTIONS: Final = {
     CONF_CODE_REQUIRED_FOR: [ACTION_ARM_AWAY, ACTION_ARM_HOME, ACTION_DISARM],
     CONF_ARM_SEQUENCE: SEQUENCE_AUTO,
     CONF_EXTENDED_HEADER: False,
+    CONF_LED_LABELS: {},
 }
 
 NUM_FREE_LEDS: Final = 4
 NUM_AREAS: Final = 32
 NUM_SWITCHES: Final = 16
+
+# Lovelace keypad card shipped with the integration
+CARD_URL: Final = f"/{DOMAIN}/telenot-keypad-card.js"
 
 
 def state_sources() -> list[str]:

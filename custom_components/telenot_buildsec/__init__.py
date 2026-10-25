@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
-from .const import DOMAIN, MANUFACTURER
+from .const import CARD_URL, DOMAIN, MANUFACTURER
 from .coordinator import TelenotConfigEntry, TelenotCoordinator
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+CARD_FILE = Path(__file__).parent / "frontend" / "telenot-keypad-card.js"
 
 PLATFORMS: list[Platform] = [
     Platform.ALARM_CONTROL_PANEL,
@@ -17,6 +27,19 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Serve the keypad card and load it in the frontend (no manual resource needed)."""
+    if hass.http is None:
+        return True
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(CARD_URL, str(CARD_FILE), cache_headers=True)]
+    )
+    if "frontend" in hass.config.components:
+        version = (await async_get_integration(hass, DOMAIN)).version
+        add_extra_js_url(hass, f"{CARD_URL}?v={version}")
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: TelenotConfigEntry) -> bool:

@@ -45,10 +45,12 @@ from .const import (
     CONF_KEY_NUMBER,
     CONF_KEYPAD_ADDRESS,
     CONF_KEYPAD_CODE,
+    CONF_LED_LABELS,
     CONF_SCAN_INTERVAL,
     DEFAULT_OPTIONS,
     DOMAIN,
     MODE_ON_DEMAND,
+    NUM_FREE_LEDS,
     SEQUENCE_AUTO,
     SEQUENCE_KEY_ONLY,
     SOURCE_AUTO,
@@ -625,9 +627,14 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             return state.switches[idx]
         return None
 
+    def led_label(self, index: int) -> str | None:
+        """Label of free LED ``index``: options first, then the panel's text."""
+        custom = str((self.options.get(CONF_LED_LABELS) or {}).get(f"led_{index}") or "")
+        return custom.strip() or self.labels.free_leds.get(index)
+
     def _auto_source(self, pattern: re.Pattern[str]) -> str:
-        for idx, text in sorted(self.labels.free_leds.items()):
-            if pattern.search(text):
+        for idx in range(1, NUM_FREE_LEDS + 1):
+            if (text := self.led_label(idx)) and pattern.search(text):
                 return f"led_{idx}"
         for idx, text in sorted(self.labels.areas.items()):
             if pattern.search(text):

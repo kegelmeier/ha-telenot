@@ -92,6 +92,18 @@
           "extended_header": "Off (recommended): plain VdS 2465 header, as used by the BuildSec iOS app and confirmed on a real panel. On: Telenot protocol extension used by the Android app, not verified on real hardware.",
           "alarm_code": "Checked by Home Assistant and never sent to the panel (the panel always gets the stored keypad code). Leave empty to never ask for a code.",
           "code_required_for": "Actions that need the alarm code. A wrong code never reaches the panel. Home Assistant has one switch for both arm modes: if one needs the code, its keypad also opens for the other, but only the selected mode checks it."
+        },
+        "sections": {
+          "led_labels": {
+            "name": "Keypad LED labels",
+            "description": "Text next to the four free LEDs, as on your keypad (e.g. Intern Bereit, Extern Bereit, Intern Scharf, Extern Scharf). Used for the LED sensors, the keypad card and the automatic armed-state detection. Empty: label from the panel, if any.",
+            "data": {
+              "led_1": "LED 1",
+              "led_2": "LED 2",
+              "led_3": "LED 3",
+              "led_4": "LED 4"
+            }
+          }
         }
       }
     }

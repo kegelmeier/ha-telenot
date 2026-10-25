@@ -135,6 +135,7 @@ integration stops and asks you to re-authenticate instead of retrying.
 | **Arm/disarm key sequence** | Automatic | *Automatic* enters the code only when the display asks; *Always* = key → code → OK; *Key only* |
 | **Alarm code (Home Assistant)** | empty | Checked by Home Assistant, never sent to the panel. Empty = never ask for a code |
 | **Require the alarm code for** | all | Any of arm away, arm home, disarm. Home Assistant has one “code to arm” switch: if one arm mode needs the code, its keypad also opens for the other, but only the selected mode checks it |
+| **Keypad LED labels** | empty | Text next to the four free LEDs, as on your keypad (e.g. *Intern Bereit, Extern Bereit, Intern Scharf, Extern Scharf*). Names the LED sensors, labels the keypad card and feeds the automatic armed detection. Empty = text from the panel, if any |
 | **Extended Telenot protocol header** | Off | Experimental: the Android app's protocol extension instead of the plain VdS header confirmed on a real panel |
 
 ### How “armed” is detected
@@ -144,7 +145,9 @@ shows, and that depends on how your installer programmed the panel. For *armed a
 *armed home* you choose:
 
 - **Automatic**: the free LED, area or switching function whose label contains
-  “extern … scharf” / “intern … scharf”; otherwise the last display state.
+  “extern … scharf” / “intern … scharf”; otherwise the last display state. Your own
+  **keypad LED labels** count as labels, so entering *Intern Scharf* / *Extern Scharf*
+  there is usually all it takes.
 - **Last display state**: remembers when the display last said “Extern scharf”,
   “Intern scharf” or “Unscharf”. It is never set from Home Assistant's own commands, so a
   failed arm cannot show as armed. Use this if your keypad lights no LED while armed.
@@ -153,6 +156,22 @@ shows, and that depends on how your installer programmed the panel. For *armed a
 
 The alarm panel's attributes show which indicator is in use. If the state looks wrong,
 watch the LED and display sensors while arming at a real keypad and pick the matching one.
+
+## 🎛️ Keypad card
+
+The integration ships a Lovelace card that looks and works like the BuildSec keypad:
+LCD, the four LEDs with your labels, alarm/fault/walk-test indicators and every key.
+It is loaded automatically, no resource or HACS frontend install needed.
+
+```yaml
+type: custom:telenot-keypad-card
+entity: alarm_control_panel.alarmanlage
+confirm_arming: true  # arm keys need a second tap within 3 s
+show_logo: true
+```
+
+When the remote access is paused, the card says so and offers a *Connect* button; while
+connected, *Release for app* pauses it so you can use the BuildSec app.
 
 ## 🔌 Entities
 

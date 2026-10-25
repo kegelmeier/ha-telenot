@@ -16,6 +16,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -47,12 +48,14 @@ from .const import (
     CONF_KEY_NUMBER,
     CONF_KEYPAD_ADDRESS,
     CONF_KEYPAD_CODE,
+    CONF_LED_LABELS,
     CONF_SCAN_INTERVAL,
     DEFAULT_KEYPAD_ADDRESS,
     DEFAULT_OPTIONS,
     DOMAIN,
     MODE_ON_DEMAND,
     MODE_PERSISTENT,
+    NUM_FREE_LEDS,
     SEQUENCE_AUTO,
     SEQUENCE_CODE,
     SEQUENCE_KEY_ONLY,
@@ -273,6 +276,11 @@ class TelenotOptionsFlow(OptionsFlowWithReload):
             for key in (CONF_IDLE_TIMEOUT, CONF_SCAN_INTERVAL):
                 user_input[key] = int(user_input[key])
             user_input[CONF_ALARM_CODE] = str(user_input.get(CONF_ALARM_CODE) or "").strip()
+            user_input[CONF_LED_LABELS] = {
+                key: text
+                for key, value in (user_input.get(CONF_LED_LABELS) or {}).items()
+                if (text := str(value or "").strip())
+            }
             return self.async_create_entry(data=user_input)
         current = {**DEFAULT_OPTIONS, **self.config_entry.options}
         sources = SelectSelector(
@@ -332,6 +340,20 @@ class TelenotOptionsFlow(OptionsFlowWithReload):
                 vol.Required(
                     CONF_EXTENDED_HEADER, default=current[CONF_EXTENDED_HEADER]
                 ): BooleanSelector(),
+                vol.Required(CONF_LED_LABELS): section(
+                    vol.Schema(
+                        {
+                            vol.Optional(
+                                f"led_{i}",
+                                description={
+                                    "suggested_value": current[CONF_LED_LABELS].get(f"led_{i}")
+                                },
+                            ): TextSelector()
+                            for i in range(1, NUM_FREE_LEDS + 1)
+                        }
+                    ),
+                    {"collapsed": False},
+                ),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

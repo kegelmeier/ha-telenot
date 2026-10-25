@@ -27,7 +27,7 @@ from .const import (
 )
 from .coordinator import TelenotConfigEntry
 from .entity import TelenotEntity
-from .pytelenot import Key
+from .pytelenot import Key, Led, LedColor
 
 PARALLEL_UPDATES = 1
 
@@ -82,6 +82,8 @@ class TelenotAlarmPanel(TelenotEntity, AlarmControlPanelEntity):
     """The panel, operated like the BuildSec virtual keypad."""
 
     _attr_name = None
+    # live keypad snapshot for the Lovelace card; changes often, not worth recording
+    _unrecorded_attributes = frozenset({"keypad"})
     _attr_supported_features = (
         AlarmControlPanelEntityFeature.ARM_AWAY | AlarmControlPanelEntityFeature.ARM_HOME
     )
@@ -115,6 +117,28 @@ class TelenotAlarmPanel(TelenotEntity, AlarmControlPanelEntity):
             "display": "\n".join(state.display),
             "armed_away_indicator": self.coordinator.resolved_source(CONF_ARMED_AWAY_SOURCE),
             "armed_home_indicator": self.coordinator.resolved_source(CONF_ARMED_HOME_SOURCE),
+            "keypad": self._keypad(),
+        }
+
+    def _keypad(self) -> dict[str, Any]:
+        """Everything the keypad card shows, in one attribute."""
+        state = self.coordinator.client.state
+
+        def led(item: Led, color: LedColor | None = None) -> dict[str, Any]:
+            lit = (item.color if color is None else color) if item.active else LedColor.OFF
+            return {"color": lit.value, "blinking": item.blinking}
+
+        return {
+            "display": list(state.display),
+            "leds": [
+                {"label": self.coordinator.led_label(i + 1), **led(item)}
+                for i, item in enumerate(state.free_leds)
+            ],
+            "alarm": led(state.alarm, LedColor.RED),
+            "fault": led(state.fault, LedColor.YELLOW),
+            "walk_test": led(state.walk_test, LedColor.GREEN),
+            "operation": led(state.operation, LedColor.GREEN),
+            "buzzer": state.buzzer.value,
         }
 
     async def async_alarm_arm_away(self, code: str | None = None) -> None:
