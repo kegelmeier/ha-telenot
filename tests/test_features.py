@@ -16,7 +16,7 @@ from custom_components.telenot_buildsec.const import DOMAIN
 from custom_components.telenot_buildsec.pytelenot.buildsec import lcd_decode
 
 from .fake_panel import FakePanel
-from .test_integration import entry_data, wait_for, wait_for_reload
+from .test_integration import _fast_sleep, _real_sleep, entry_data, wait_for, wait_for_reload
 
 PANEL = "alarm_control_panel.telenot_127_0_0_1"
 EVENT_LOG = "event.telenot_127_0_0_1_event_log"
@@ -129,3 +129,40 @@ def test_guess_device_class(label: str | None, expected) -> None:
 
 def test_lcd_sharp_s() -> None:
     assert lcd_decode(b"Stra\xe2e") == "Straße"
+
+
+async def test_pause_releases_remote_access(
+    hass: HomeAssistant, fake_panel: FakePanel, monkeypatch
+) -> None:
+    monkeypatch.setattr("custom_components.telenot_buildsec.coordinator.asyncio.sleep", _fast_sleep)
+    entry = await _setup(hass, fake_panel)
+    coordinator = entry.runtime_data
+    remote = "switch.telenot_127_0_0_1_remote_access"
+    assert hass.states.get(remote).state == "on"
+
+    fake_panel.session_closed.clear()
+    await hass.services.async_call("switch", "turn_off", {"entity_id": remote}, blocking=True)
+    await wait_for(fake_panel.session_closed.is_set)  # session ended properly (0x8E)
+    assert not coordinator.connected
+    await hass.async_block_till_done()
+    assert hass.states.get(remote).state == "off"
+    assert hass.states.get(PANEL).state == "unavailable"
+    await _real_sleep(0.5)  # the reconnect loop must stay away while paused
+    assert not coordinator.connected
+    keys_before = list(fake_panel.received_keys)
+    await _call(hass, "alarm_arm_away")  # entity unavailable: Home Assistant skips it
+    with pytest.raises(ServiceValidationError):  # automations calling in directly are refused
+        await coordinator.async_press_keys([0x31])
+    assert fake_panel.received_keys == keys_before
+
+    # paused survives a reload
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    assert coordinator.paused and not coordinator.connected
+    assert hass.states.get(remote).state == "off"
+
+    await hass.services.async_call("switch", "turn_on", {"entity_id": remote}, blocking=True)
+    await wait_for(lambda: coordinator.connected, timeout=10)
+    await _state_is(hass, AlarmControlPanelState.DISARMED)
+    assert await hass.config_entries.async_unload(entry.entry_id)

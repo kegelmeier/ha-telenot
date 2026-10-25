@@ -174,6 +174,9 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         self._arming_unsub: CALLBACK_TYPE | None = None
         self._labels_task: asyncio.Task[None] | None = None
         self._shutting_down = False
+        # remote access released for the BuildSec app (switch entity), kept across restarts
+        self.paused = False
+        self._resumed = asyncio.Event()
         self.panel_device_id: str | None = None
         self._event_listeners: list[Callable[[str, dict[str, Any]], None]] = []
         # last panel-reported state, None until a complete snapshot after (re)connect
@@ -194,11 +197,16 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             self.client.labels = self.labels
             if latched := stored.get("latched_state"):
                 self.latched_state = AlarmControlPanelState(latched)
+            self.paused = bool(stored.get("paused", False))
+        if self.paused:
+            _LOGGER.info("Remote access is paused, not connecting to the Telenot panel")
         if self.on_demand:
-            await self.async_config_entry_first_refresh()
+            if not self.paused:
+                await self.async_config_entry_first_refresh()
             return
         try:
-            await self._connect()
+            if not self.paused:
+                await self._connect()
         except (TelenotAuthError, TelenotKeyError) as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except TelenotError as err:
@@ -210,6 +218,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
     async def async_shutdown(self) -> None:
         """Close the session when the entry is unloaded."""
         self._shutting_down = True
+        self._resumed.set()
         self._cancel_idle()
         if self._arming_unsub is not None:
             self._arming_unsub()
@@ -233,6 +242,8 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         After a (re)connect, entities stay unavailable until display and LEDs have been
         received, so a stale state is never shown as current.
         """
+        if self.paused:
+            return False
         if self.on_demand:
             return self.last_update_success
         return self.client.connected and self.client.state.complete
@@ -279,8 +290,17 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
                 await self._disconnected.wait()
                 if self._shutting_down:
                     return
-                _LOGGER.info("Connection to Telenot panel lost, reconnecting")
+                if not self.paused:
+                    _LOGGER.info("Connection to Telenot panel lost, reconnecting")
+            if self.paused:
+                await self._resumed.wait()
+                if self._shutting_down:
+                    return
+                backoff = 5
+                continue
             await asyncio.sleep(backoff)
+            if self.paused:
+                continue
             try:
                 await self._connect()
             except (TelenotAuthError, TelenotKeyError) as err:
@@ -299,8 +319,13 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         async with self._lock:
             if self.client.connected:
                 return
+            if self.paused:
+                raise TelenotError("Remote access is paused in Home Assistant")
             self._disconnected.clear()
             await self.client.connect()
+            if self.paused:  # paused while the session was being opened
+                await self.client.disconnect()
+                raise TelenotError("Remote access is paused in Home Assistant")
         _LOGGER.debug(
             "Connected to Telenot panel (family=%s firmware=%s text crc=%s)",
             self.client.state.device_family,
@@ -344,7 +369,39 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             self._schedule_idle_disconnect()
 
     def _store_data(self) -> dict[str, Any]:
-        return {"labels": self.labels.as_dict(), "latched_state": self.latched_state}
+        return {
+            "labels": self.labels.as_dict(),
+            "latched_state": self.latched_state,
+            "paused": self.paused,
+        }
+
+    # ------------------------------------------------------------------ pause
+
+    async def async_pause(self) -> None:
+        """Release the remote access so the BuildSec app can connect."""
+        if self.paused:
+            return
+        self.paused = True
+        self._resumed.clear()
+        self._cancel_idle()
+        await self._store.async_save(self._store_data())
+        async with self._command_lock:  # let a running command finish first
+            await self.client.disconnect()
+        _LOGGER.info("Remote access paused, Telenot session closed")
+        self.async_update_listeners()
+
+    async def async_resume(self) -> None:
+        """Take the remote access back."""
+        if not self.paused:
+            return
+        self.paused = False
+        await self._store.async_save(self._store_data())
+        _LOGGER.info("Remote access resumed, reconnecting to the Telenot panel")
+        self.async_update_listeners()
+        if self.on_demand:
+            await self.async_request_refresh()
+        else:
+            self._resumed.set()
 
     def _set_latched(self, state: AlarmControlPanelState) -> None:
         if state != self.latched_state:
@@ -391,6 +448,8 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
 
     async def _async_update_data(self) -> PanelState:
         """Poll in on-demand mode: connect, collect the pushed state, disconnect later."""
+        if self.paused:
+            raise UpdateFailed("Remote access is paused in Home Assistant")
         try:
             await self._ensure_connected()
         except (TelenotAuthError, TelenotKeyError) as err:
@@ -434,6 +493,8 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             return await self._run_command(action)
 
     async def _run_command(self, action: Callable[[], Awaitable[Any]]) -> Any:
+        if self.paused:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="paused")
         try:
             await self._ensure_connected()
             return await action()

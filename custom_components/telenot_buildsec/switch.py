@@ -27,6 +27,7 @@ async def async_setup_entry(
         TelenotFunctionSwitch(coordinator, i) for i in range(1, NUM_SWITCHES + 1)
     ]
     entities.extend(TelenotAreaLockSwitch(coordinator, i) for i in range(1, NUM_AREAS + 1))
+    entities.append(TelenotRemoteAccessSwitch(coordinator))
     async_add_entities(entities)
 
 
@@ -102,3 +103,32 @@ class TelenotAreaLockSwitch(TelenotEntity, SwitchEntity):
         """Unlock the area."""
         if self.is_on:
             await self.coordinator.async_toggle_area_lock(self._index)
+
+
+class TelenotRemoteAccessSwitch(TelenotEntity, SwitchEntity):
+    """Hold the remote access (on) or release it for the BuildSec app (off)."""
+
+    _attr_translation_key = "remote_access"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: TelenotCoordinator) -> None:
+        """Initialise."""
+        super().__init__(coordinator, "remote_access")
+
+    @property
+    def available(self) -> bool:
+        """Always usable, also while paused or disconnected."""
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        """Home Assistant uses the remote access."""
+        return not self.coordinator.paused
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Reconnect."""
+        await self.coordinator.async_resume()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Close the session and stay disconnected."""
+        await self.coordinator.async_pause()

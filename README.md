@@ -74,6 +74,7 @@ against a decrypted capture of the BuildSec iOS app talking to a real panel (see
 
 **Connection**
 - Persistent session with automatic reconnect, or on-demand mode so the BuildSec app stays usable
+- *Remote access* switch to release the session for the BuildSec app and take it back later
 - Never retries wrong credentials (avoids keypad lockouts and manipulation reports)
 - After a (re)connect, entities stay unavailable until the panel has sent its full status, so a
   stale state is never shown as current
@@ -121,8 +122,9 @@ integration stops and asks you to re-authenticate instead of retrying.
 
 > [!IMPORTANT]
 > **Only one remote session can be open at a time.** While Home Assistant holds the
-> connection, the BuildSec app reports “remote access already in use”. Switch to
-> **on-demand** mode in the options if you still need the app.
+> connection, the BuildSec app reports “remote access already in use”. Turn off the
+> **Remote access** switch while you use the app (and back on afterwards), or switch to
+> **on-demand** mode in the options.
 
 ### Options
 
@@ -161,6 +163,7 @@ watch the LED and display sensors while arming at a real keypad and pick the mat
 | Area 1–32 | Binary sensor | Indicator areas (red LED), enabled when labelled |
 | Switching function 1–16 | Switch | Toggle a switching function |
 | Area lock 1–32 | Switch | Lock/bypass an area (yellow LED) |
+| Remote access | Switch | Off closes the session and keeps Home Assistant away, e.g. for the BuildSec app; kept across restarts |
 | Display line 1 / 2 | Sensor | Keypad LCD text |
 | Buzzer, Free LED 1–4 | Sensor | Buzzer pattern, LED colour |
 | Event log | Event | `armed_away`, `armed_home`, `disarmed`, `triggered`, `fault`, `fault_cleared`, `command_failed` with source, action, reason and display text |

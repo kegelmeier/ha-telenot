@@ -8,7 +8,8 @@
     "switch": {
       "switching_function": { "default": "mdi:toggle-switch-variant-off", "state": { "on": "mdi:toggle-switch-variant" } },
       "area_lock": { "default": "mdi:lock-open-variant-outline", "state": { "on": "mdi:lock" } },
-      "area_locked": { "default": "mdi:lock-open-variant-outline", "state": { "on": "mdi:lock" } }
+      "area_locked": { "default": "mdi:lock-open-variant-outline", "state": { "on": "mdi:lock" } },
+      "remote_access": { "default": "mdi:lan-disconnect", "state": { "on": "mdi:lan-connect" } }
     },
     "sensor": {
       "display_line": { "default": "mdi:text-box-outline" },

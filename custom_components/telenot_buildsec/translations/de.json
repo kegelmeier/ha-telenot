@@ -218,6 +218,9 @@
       },
       "area_locked": {
         "name": "Gesperrt"
+      },
+      "remote_access": {
+        "name": "Fernzugriff"
       }
     },
     "sensor": {
@@ -308,6 +311,9 @@
   "exceptions": {
     "wrong_code": {
       "message": "Falscher oder fehlender Alarmcode"
+    },
+    "paused": {
+      "message": "Der Fernzugriff ist in Home Assistant pausiert. Schalte zuerst den Schalter „Fernzugriff“ ein."
     }
   }
 }

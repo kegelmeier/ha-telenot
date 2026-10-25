@@ -218,6 +218,9 @@
       },
       "area_locked": {
         "name": "Locked"
+      },
+      "remote_access": {
+        "name": "Remote access"
       }
     },
     "sensor": {
@@ -308,6 +311,9 @@
   "exceptions": {
     "wrong_code": {
       "message": "Wrong or missing alarm code"
+    },
+    "paused": {
+      "message": "Remote access is paused in Home Assistant. Turn on the remote access switch first."
     }
   }
 }
