@@ -67,6 +67,9 @@ class FakePanel:
         self.switches = 0
         self.alarm = False
         self._entering: int | None = None
+        # keypad message list (DOWN key): open detectors as (line 1, line 2)
+        self.messages: list[tuple[str, str]] = []
+        self._list_pos: int | None = None
         self._digits = ""
         self._outbox: list[bytes] = []
         self._writer: asyncio.StreamWriter | None = None
@@ -98,7 +101,9 @@ class FakePanel:
         free1 = {"armed_away": 2, "armed_home": 0}.get(self.armed, 0)
         free2 = 3 if self.armed == "armed_home" else 0
         b2 = 0x01 | (0x02 if self.alarm else 0) | (free1 << 4) | (free2 << 6)
-        return bytes([0xC0, 0x00, b2, 0x00, 0b0000_0101, 0, 0b0000_0010, 0, 0, 0, 0, 0])
+        # LED 3 "Intern Bereit": green while disarmed and nothing is open
+        b3 = 1 if self.armed == "disarmed" and not self.messages else 0
+        return bytes([0xC0, 0x00, b2, b3, 0b0000_0101, 0, 0b0000_0010, 0, 0, 0, 0, 0])
 
     def state_blocks(self) -> list[bytes]:
         text = {
@@ -152,9 +157,33 @@ class FakePanel:
 
         return encode_code(self.code)
 
+    def set_messages(self, messages: list[tuple[str, str]]) -> None:
+        self.messages = list(messages)
+        self.push(self.led_block())
+
+    def _list_screen(self) -> bytes:
+        pos = self._list_pos or 0
+        if pos == 0:
+            return lcd_block("Kegelmann", "unscharf")
+        if not self.messages:
+            return lcd_block("keine Meldungen!", "")
+        if pos <= len(self.messages):
+            return lcd_block(*self.messages[pos - 1])
+        return lcd_block("keine weiteren", "Meldungen !")
+
     def on_key(self, key: int) -> None:
         self.received_keys.append(key)
-        if key in (0x45, 0x49, 0x41):
+        if key == 0x2B and self._entering is None:  # DOWN: message list
+            self._list_pos = 0 if self._list_pos is None else self._list_pos + 1
+            self.push(bytes([0xCE, key]), self._list_screen())
+        elif key == 0x53 and self._list_pos is not None:  # ESC: header, then idle
+            if self._list_pos > 0:
+                self._list_pos = 0
+                self.push(bytes([0xCE, key]), self._list_screen())
+            else:
+                self._list_pos = None
+                self.push(bytes([0xCE, key]), *self.state_blocks())
+        elif key in (0x45, 0x49, 0x41):
             self._entering = key
             self._digits = ""
             self.push(lcd_block("Code eingeben:", ""), bytes([0xCE, key]))

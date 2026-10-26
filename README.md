@@ -65,6 +65,14 @@ against a decrypted capture of the BuildSec iOS app talking to a real panel (see
   from Home Assistant that failed and why
 - Alarm, fault (Störung), walk test and operation indicators
 
+**Open windows, doors and motion**
+- Reads the keypad's message list (the DOWN key) whenever the *Bereit* LEDs go out, and again
+  every 2 minutes while something stays open
+- One binary sensor per detector, created automatically the first time it shows up
+  (e.g. *Kippfenster re. OG*), with a device class guessed from its name
+- *Open messages* sensor (count and list), *Read message list* button and event-log entries
+  `detector_opened` / `detector_closed`
+
 **Areas & switching functions**
 - 32 indicator areas (Meldebereiche) and 32 area locks (sperren/bypass)
 - 16 switching functions (Schaltfunktionen) as switches
@@ -170,6 +178,9 @@ confirm_arming: true  # arm keys need a second tap within 3 s
 show_logo: true
 ```
 
+Tap an LED, a status icon or the display to open its history. When detectors are open, a
+chip under the keypad shows how many; tap it for the list.
+
 When the remote access is paused, the card says so and offers a *Connect* button; while
 connected, *Release for app* pauses it so you can use the BuildSec app.
 
@@ -185,7 +196,10 @@ connected, *Release for app* pauses it so you can use the BuildSec app.
 | Remote access | Switch | Off closes the session and keeps Home Assistant away, e.g. for the BuildSec app; kept across restarts |
 | Display line 1 / 2 | Sensor | Keypad LCD text |
 | Buzzer, Free LED 1–4 | Sensor | Buzzer pattern, LED colour |
-| Event log | Event | `armed_away`, `armed_home`, `disarmed`, `triggered`, `fault`, `fault_cleared`, `command_failed` with source, action, reason and display text |
+| Event log | Event | `armed_away`, `armed_home`, `disarmed`, `triggered`, `fault`, `fault_cleared`, `command_failed`, `detector_opened`, `detector_closed` with source, action, reason, detector and display text |
+| Detectors | Binary sensor | One per detector found in the message list, on while listed |
+| Open messages | Sensor | Number of listed detectors, names in `detectors` |
+| Read message list | Button | Scroll through the message list now (disarmed only) |
 | Keypad keys | Button | Every key (disabled by default), e.g. for a keypad card |
 
 Labelled indicator areas appear as their own devices under the panel, each with a *State*
@@ -225,8 +239,11 @@ Protocol notes: [transport](docs/protocol-01-transport.md) ·
   (requires **Home Assistant 2026.3+**).
 - The panel always gets the stored keypad code. The optional Home Assistant alarm code is a
   separate gate in Home Assistant only.
-- Unlike the panel's serial GMS interface, the BuildSec keypad channel has no “ready to arm”
-  information, so there are no readiness sensors.
+- The BuildSec keypad channel sends no zone states: the indicator areas stay off on panels
+  like a complex400. Open detectors come from the message list instead, which is read by
+  pressing DOWN on the virtual keypad. That needs an LED labelled *Bereit* (option *LED
+  labels*), runs only while disarmed and waits until nobody has pressed a key for 30 s.
+  When everything is closed again, the *Bereit* LEDs alone clear the detectors.
 
 Enable debug logging to see every decrypted telegram:
 

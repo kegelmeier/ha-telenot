@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import NUM_FREE_LEDS
 from .coordinator import TelenotConfigEntry, TelenotCoordinator
@@ -28,6 +31,7 @@ async def async_setup_entry(
         TelenotBuzzerSensor(coordinator),
     ]
     entities.extend(TelenotFreeLedSensor(coordinator, i) for i in range(1, NUM_FREE_LEDS + 1))
+    entities.append(TelenotOpenDetectorsSensor(coordinator))
     async_add_entities(entities)
 
 
@@ -97,3 +101,31 @@ class TelenotFreeLedSensor(TelenotEntity, SensorEntity):
         """Blinking flag."""
         led = self.coordinator.client.state.free_leds[self._index - 1]
         return {"index": self._index, "blinking": led.blinking}
+
+
+class TelenotOpenDetectorsSensor(TelenotEntity, SensorEntity):
+    """Number of detectors the keypad message list shows (open windows, doors, motion)."""
+
+    _attr_translation_key = "open_detectors"
+    _unrecorded_attributes = frozenset({"read_at"})
+
+    def __init__(self, coordinator: TelenotCoordinator) -> None:
+        """Initialise."""
+        super().__init__(coordinator, "open_detectors")
+
+    @property
+    def native_value(self) -> int | None:
+        """Number of listed detectors; unknown until the list was read."""
+        if self.coordinator.open_detectors is None:
+            return None
+        return len(self.coordinator.open_detectors)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The listed detectors and when the list was read."""
+        open_detectors = self.coordinator.open_detectors or set()
+        read_at = self.coordinator.messages_read_at
+        return {
+            "detectors": sorted(open_detectors),
+            "read_at": dt_util.utc_from_timestamp(read_at).isoformat() if read_at else None,
+        }

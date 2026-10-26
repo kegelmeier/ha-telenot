@@ -250,6 +250,10 @@
           "continuous": "Continuous"
         }
       },
+      "open_detectors": {
+        "name": "Open messages",
+        "unit_of_measurement": "messages"
+      },
       "free_led": {
         "name": "LED {index}",
         "state": {
@@ -287,6 +291,9 @@
       },
       "key_function": {
         "name": "Function key"
+      },
+      "read_messages": {
+        "name": "Read message list"
       }
     },
     "event": {
@@ -301,7 +308,9 @@
               "triggered": "Alarm",
               "fault": "Fault",
               "fault_cleared": "Fault cleared",
-              "command_failed": "Command failed"
+              "command_failed": "Command failed",
+              "detector_opened": "Detector opened",
+              "detector_closed": "Detector closed"
             }
           }
         }
@@ -326,6 +335,9 @@
     },
     "paused": {
       "message": "Remote access is paused in Home Assistant. Turn on the remote access switch first."
+    },
+    "not_disarmed": {
+      "message": "The message list can only be read while the panel is disarmed."
     }
   }
 }

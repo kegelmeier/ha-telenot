@@ -31,6 +31,7 @@ const TEXT = {
     alarm: "Alarm",
     fault: "Störung",
     walk: "Gehtest",
+    open: (n) => (n === 1 ? "1 Meldung" : `${n} Meldungen`),
     keys: {
       disarm: "Unscharf",
       arm_home: "Intern scharf",
@@ -56,6 +57,7 @@ const TEXT = {
     alarm: "Alarm",
     fault: "Fault",
     walk: "Walk test",
+    open: (n) => (n === 1 ? "1 message" : `${n} messages`),
     keys: {
       disarm: "Disarm",
       arm_home: "Arm home",
@@ -222,6 +224,13 @@ const STYLE = `
   .info ha-icon { --mdc-icon-size: 9cqw; }
   .footer { display: flex; align-items: center; justify-content: space-between; gap: 2cqw; margin-top: 5cqw; font-size: 3.6cqw; }
   .footer .state { opacity: 0.75; }
+  .footer .info-row { display: flex; align-items: center; gap: 2cqw; min-width: 0; }
+  .footer .open { display: none; align-items: center; gap: 1cqw; padding: 0.6cqw 2.2cqw; border-radius: 99px; background: rgba(242, 183, 5, 0.18); color: var(--primary-text-color); white-space: nowrap; }
+  .footer .open.show { display: inline-flex; }
+  .footer .open ha-icon { --mdc-icon-size: 4.2cqw; color: #f2b705; }
+  [data-more]:not([data-more=""]) { cursor: pointer; }
+  .led-row[data-more]:not([data-more=""]):hover .led-label { text-decoration: underline; }
+  .status ha-icon[data-more]:not([data-more=""]):hover { opacity: 0.7; }
   .footer button, .overlay button {
     all: unset; cursor: pointer; padding: 1.6cqw 3.2cqw; border-radius: 99px;
     background: var(--primary-color); color: var(--text-primary-color, #fff); font-size: 3.6cqw; font-weight: 500;
@@ -313,7 +322,7 @@ class TelenotKeypadCard extends HTMLElement {
           <div class="lcd"><span class="l1"> </span>\n<span class="l2"> </span><span class="hint"></span></div>
           <div class="middle">
             <div class="leds">
-              ${[0, 1, 2, 3].map((i) => `<div class="led-row"><span class="led" data-led="${i}"></span><span class="led-label" data-label="${i}"></span></div>`).join("")}
+              ${[0, 1, 2, 3].map((i) => `<div class="led-row" data-row="${i}" data-more=""><span class="led" data-led="${i}"></span><span class="led-label" data-label="${i}"></span></div>`).join("")}
             </div>
             <div class="side-top">
               <div class="logo"><b>▚</b>TELENOT</div>
@@ -330,7 +339,10 @@ class TelenotKeypadCard extends HTMLElement {
           </div>
           <div class="keys">${rows}</div>
           <div class="footer">
-            <span class="state"></span>
+            <div class="info-row">
+              <span class="state"></span>
+              <span class="open" data-more=""><ha-icon icon="mdi:message-alert-outline"></ha-icon><span></span></span>
+            </div>
             <button class="ghost" data-action="release">${t.release}</button>
           </div>
           <div class="overlay">
@@ -387,10 +399,17 @@ class TelenotKeypadCard extends HTMLElement {
         ? hass.formatEntityState(stateObj)
         : stateObj.state
       : "";
+    const open = root.querySelector(".footer .open");
+    const openCount = keypad ? (keypad.open_detectors || []).length : 0;
+    open.classList.toggle("show", online && openCount > 0);
+    open.dataset.more = (keypad && keypad.open_detectors_entity_id) || "";
+    open.title = keypad ? (keypad.open_detectors || []).join("\n") : "";
+    open.querySelector("span").textContent = t.open(openCount);
     if (!keypad) return;
 
     const [l1, l2] = keypad.display || ["", ""];
     root.querySelector(".l1").textContent = l1 || " ";
+    root.querySelector(".lcd").dataset.more = keypad.display_entity_id || "";
     root.querySelector(".l2").textContent = l2 || " ";
     root.querySelector(".lcd .hint").textContent = this._pending ? t.confirm : "";
 
@@ -398,19 +417,27 @@ class TelenotKeypadCard extends HTMLElement {
       const dot = root.querySelector(`[data-led="${i}"]`);
       dot.className = `led ${led.color !== "off" ? led.color : ""} ${led.blinking ? "blink" : ""}`;
       root.querySelector(`[data-label="${i}"]`).textContent = led.label || `${t.led} ${i + 1}`;
+      root.querySelector(`[data-row="${i}"]`).dataset.more = led.entity_id || "";
     });
     ["alarm", "fault", "walk_test"].forEach((name) => {
       const ind = keypad[name] || { color: "off" };
       const icon = root.querySelector(`[data-ind="${name}"]`);
       icon.setAttribute("class", `${ind.color !== "off" ? ind.color : ""} ${ind.blinking ? "blink" : ""}`);
+      icon.dataset.more = ind.entity_id || "";
     });
   }
 
   // ------------------------------------------------------------------ actions
 
   _onClick(ev) {
-    const target = ev.composedPath().find((el) => el.dataset && (el.dataset.key || el.dataset.action));
+    const target = ev
+      .composedPath()
+      .find((el) => el.dataset && (el.dataset.key || el.dataset.action || el.dataset.more));
     if (!target) return;
+    if (target.dataset.more) {
+      this._fire("hass-more-info", { entityId: target.dataset.more });
+      return;
+    }
     if (target.dataset.action) {
       this._action(target.dataset.action);
       return;

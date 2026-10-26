@@ -32,7 +32,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up keypad buttons."""
     coordinator = entry.runtime_data
-    async_add_entities(TelenotKeyButton(coordinator, k, v) for k, v in BUTTONS.items())
+    async_add_entities(
+        [
+            *(TelenotKeyButton(coordinator, k, v) for k, v in BUTTONS.items()),
+            TelenotReadMessagesButton(coordinator),
+        ]
+    )
 
 
 class TelenotKeyButton(TelenotEntity, ButtonEntity):
@@ -53,3 +58,17 @@ class TelenotKeyButton(TelenotEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Press the key."""
         await self.coordinator.async_press_keys([self._code])
+
+
+class TelenotReadMessagesButton(TelenotEntity, ButtonEntity):
+    """Scroll through the keypad message list now (open detectors)."""
+
+    _attr_translation_key = "read_messages"
+
+    def __init__(self, coordinator: TelenotCoordinator) -> None:
+        """Initialise."""
+        super().__init__(coordinator, "read_messages")
+
+    async def async_press(self) -> None:
+        """Read the list."""
+        await self.coordinator.async_read_messages()

@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
@@ -24,6 +25,7 @@ from .const import (
     CONF_ALARM_CODE,
     CONF_ARMED_AWAY_SOURCE,
     CONF_ARMED_HOME_SOURCE,
+    DOMAIN,
 )
 from .coordinator import TelenotConfigEntry
 from .entity import TelenotEntity
@@ -124,21 +126,38 @@ class TelenotAlarmPanel(TelenotEntity, AlarmControlPanelEntity):
         """Everything the keypad card shows, in one attribute."""
         state = self.coordinator.client.state
 
-        def led(item: Led, color: LedColor | None = None) -> dict[str, Any]:
+        registry = er.async_get(self.hass)
+        entry = self.coordinator.config_entry
+        base = entry.unique_id or entry.entry_id
+
+        def entity_id(domain: str, key: str) -> str | None:
+            # lets the card open the more-info dialog (history) of each indicator
+            return registry.async_get_entity_id(domain, DOMAIN, f"{base}:{key}")
+
+        def led(
+            item: Led, key: str, domain: str = "binary_sensor", color: LedColor | None = None
+        ) -> dict[str, Any]:
             lit = (item.color if color is None else color) if item.active else LedColor.OFF
-            return {"color": lit.value, "blinking": item.blinking}
+            return {
+                "color": lit.value,
+                "blinking": item.blinking,
+                "entity_id": entity_id(domain, key),
+            }
 
         return {
             "display": list(state.display),
+            "display_entity_id": entity_id("sensor", "display_1"),
             "leds": [
-                {"label": self.coordinator.led_label(i + 1), **led(item)}
+                {"label": self.coordinator.led_label(i + 1), **led(item, f"led_{i + 1}", "sensor")}
                 for i, item in enumerate(state.free_leds)
             ],
-            "alarm": led(state.alarm, LedColor.RED),
-            "fault": led(state.fault, LedColor.YELLOW),
-            "walk_test": led(state.walk_test, LedColor.GREEN),
-            "operation": led(state.operation, LedColor.GREEN),
+            "alarm": led(state.alarm, "alarm", color=LedColor.RED),
+            "fault": led(state.fault, "fault", color=LedColor.YELLOW),
+            "walk_test": led(state.walk_test, "walk_test", color=LedColor.GREEN),
+            "operation": led(state.operation, "operation", color=LedColor.GREEN),
             "buzzer": state.buzzer.value,
+            "open_detectors": sorted(self.coordinator.open_detectors or ()),
+            "open_detectors_entity_id": entity_id("sensor", "open_detectors"),
         }
 
     async def async_alarm_arm_away(self, code: str | None = None) -> None:

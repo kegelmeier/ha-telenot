@@ -187,7 +187,14 @@ async def test_led_labels_from_options(hass: HomeAssistant, fake_panel: FakePane
         None,
     ]
     assert keypad["leds"][1]["color"] == "off"
-    assert keypad["alarm"] == {"color": "off", "blinking": False}
+    assert keypad["alarm"] == {
+        "color": "off",
+        "blinking": False,
+        "entity_id": "binary_sensor.telenot_127_0_0_1_alarm",
+    }
+    # the card opens the more-info dialog of each LED
+    assert keypad["leds"][1]["entity_id"] == "sensor.telenot_127_0_0_1_intern_scharf"
+    assert keypad["display_entity_id"] == "sensor.telenot_127_0_0_1_display_line_1"
     assert len(keypad["display"]) == 2
 
     await _call(hass, "alarm_arm_home")
@@ -231,4 +238,81 @@ async def test_keypad_card_is_served(
     response = await client.get(CARD_URL)
     assert response.status == 200
     assert "telenot-keypad-card" in await response.text()
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+OPEN_SENSOR = "sensor.telenot_127_0_0_1_open_messages"
+WINDOW = "binary_sensor.telenot_127_0_0_1_kippfenster_re_og"
+MOTION = "binary_sensor.telenot_127_0_0_1_melder_flur_eg"
+
+
+async def test_message_list_detectors(
+    hass: HomeAssistant, fake_panel: FakePanel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("custom_components.telenot_buildsec.coordinator.READ_DELAY", 0.05)
+    entry = await _setup(hass, fake_panel, {"led_labels": {"led_3": "Intern Bereit"}})
+    coordinator = entry.runtime_data
+    await wait_for(lambda: coordinator.open_detectors == set())
+    assert coordinator.ready is True
+    await wait_for(lambda: hass.states.get(OPEN_SENSOR).state == "0")
+    keys_before = len(fake_panel.received_keys)
+
+    # a window and a motion detector open: the ready LED goes out, the list is read
+    fake_panel.set_messages([("Kippfenster re.", "OG"), ("Melder Flur", "EG")])
+    await wait_for(lambda: hass.states.get(MOTION) is not None)
+    await hass.async_block_till_done()
+    assert hass.states.get(WINDOW).state == "on"
+    assert hass.states.get(WINDOW).attributes["device_class"] == BinarySensorDeviceClass.WINDOW
+    assert hass.states.get(WINDOW).attributes["location"] == "OG"
+    assert hass.states.get(MOTION).attributes["device_class"] == BinarySensorDeviceClass.MOTION
+    state = hass.states.get(OPEN_SENSOR)
+    assert state.state == "2"
+    assert state.attributes["detectors"] == ["Kippfenster re. OG", "Melder Flur EG"]
+    assert hass.states.get(PANEL).attributes["keypad"]["open_detectors"] == [
+        "Kippfenster re. OG",
+        "Melder Flur EG",
+    ]
+    event = hass.states.get(EVENT_LOG)
+    assert event.attributes["event_type"] == "detector_opened"
+    assert event.attributes["detector"] == "Melder Flur EG"
+    # DOWN through header, two entries and the end marker, then ESC back to idle
+    assert fake_panel.received_keys[keys_before:] == [0x2B] * 4 + [0x53, 0x53]
+    assert fake_panel._list_pos is None
+
+    # the motion detector clears while the window stays open: read on request
+    fake_panel.messages = [("Kippfenster re.", "OG")]
+    await hass.services.async_call(
+        "button",
+        "press",
+        {"entity_id": "button.telenot_127_0_0_1_read_message_list"},
+        blocking=True,
+    )
+    assert hass.states.get(MOTION).state == "off"
+    assert hass.states.get(WINDOW).state == "on"
+    assert hass.states.get(EVENT_LOG).attributes["event_type"] == "detector_closed"
+
+    # everything closed: the ready LED is enough, no scrolling
+    keys_before = len(fake_panel.received_keys)
+    fake_panel.set_messages([])
+    await wait_for(lambda: hass.states.get(WINDOW).state == "off")
+    assert hass.states.get(OPEN_SENSOR).state == "0"
+    assert len(fake_panel.received_keys) == keys_before
+
+    # detectors found once survive a restart
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(MOTION) is not None
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_message_list_only_when_disarmed(hass: HomeAssistant, fake_panel: FakePanel) -> None:
+    entry = await _setup(hass, fake_panel)
+    coordinator = entry.runtime_data
+    assert coordinator.ready is None  # no LED labelled "Bereit": no automatic reading
+    await _call(hass, "alarm_arm_away")
+    await _state_is(hass, AlarmControlPanelState.ARMED_AWAY)
+    keys_before = list(fake_panel.received_keys)
+    with pytest.raises(ServiceValidationError):
+        await coordinator.async_read_messages()
+    assert fake_panel.received_keys == keys_before
     assert await hass.config_entries.async_unload(entry.entry_id)

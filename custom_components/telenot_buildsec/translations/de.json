@@ -250,6 +250,10 @@
           "continuous": "Dauerton"
         }
       },
+      "open_detectors": {
+        "name": "Offene Meldungen",
+        "unit_of_measurement": "Meldungen"
+      },
       "free_led": {
         "name": "LED {index}",
         "state": {
@@ -287,6 +291,9 @@
       },
       "key_function": {
         "name": "Funktionstaste"
+      },
+      "read_messages": {
+        "name": "Meldungen lesen"
       }
     },
     "event": {
@@ -301,7 +308,9 @@
               "triggered": "Alarm",
               "fault": "Störung",
               "fault_cleared": "Störung behoben",
-              "command_failed": "Befehl fehlgeschlagen"
+              "command_failed": "Befehl fehlgeschlagen",
+              "detector_opened": "Melder geöffnet",
+              "detector_closed": "Melder geschlossen"
             }
           }
         }
@@ -326,6 +335,9 @@
     },
     "paused": {
       "message": "Der Fernzugriff ist in Home Assistant pausiert. Schalte zuerst den Schalter „Fernzugriff“ ein."
+    },
+    "not_disarmed": {
+      "message": "Die Meldungsliste kann nur gelesen werden, wenn die Anlage unscharf ist."
     }
   }
 }

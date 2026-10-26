@@ -5,6 +5,9 @@
       "area": { "default": "mdi:shield-outline", "state": { "on": "mdi:shield-alert" } },
       "area_state": { "default": "mdi:shield-outline", "state": { "on": "mdi:shield-alert" } }
     },
+    "button": {
+      "read_messages": { "default": "mdi:message-text-clock-outline" }
+    },
     "switch": {
       "switching_function": { "default": "mdi:toggle-switch-variant-off", "state": { "on": "mdi:toggle-switch-variant" } },
       "area_lock": { "default": "mdi:lock-open-variant-outline", "state": { "on": "mdi:lock" } },
@@ -13,7 +16,8 @@
     },
     "sensor": {
       "display_line": { "default": "mdi:text-box-outline" },
-      "buzzer": { "default": "mdi:volume-high", "state": { "off": "mdi:volume-off" } }
+      "buzzer": { "default": "mdi:volume-high", "state": { "off": "mdi:volume-off" } },
+      "open_detectors": { "default": "mdi:message-alert-outline" }
     },
     "event": {
       "event_log": {
@@ -27,7 +31,9 @@
               "triggered": "mdi:bell-ring",
               "fault": "mdi:alert",
               "fault_cleared": "mdi:check-circle-outline",
-              "command_failed": "mdi:close-circle-outline"
+              "command_failed": "mdi:close-circle-outline",
+              "detector_opened": "mdi:door-open",
+              "detector_closed": "mdi:door-closed"
             }
           }
         }

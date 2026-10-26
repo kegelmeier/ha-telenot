@@ -12,8 +12,9 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import slugify
 
 from .const import NUM_AREAS
 from .coordinator import TelenotConfigEntry, TelenotCoordinator
@@ -31,9 +32,10 @@ _DEVICE_CLASS_HINTS: tuple[tuple[re.Pattern[str], BinarySensorDeviceClass], ...]
     (re.compile(r"garage|\btor\b|gate", re.I), BinarySensorDeviceClass.GARAGE_DOOR),
     (re.compile(r"t(ü|ue|u)r|door|eingang|entrance", re.I), BinarySensorDeviceClass.DOOR),
     (
-        re.compile(r"bewegung|\bbwm\b|\bpir\b|motion|präsenz|presence", re.I),
+        re.compile(r"bewegung|\bbwm\b|\bpir\b|motion|präsenz|presence|^melder\b", re.I),
         BinarySensorDeviceClass.MOTION,
     ),
+    (re.compile(r"kontakt|contact|magnet|reed", re.I), BinarySensorDeviceClass.OPENING),
     (re.compile(r"glas|glass|erschütter|vibration", re.I), BinarySensorDeviceClass.VIBRATION),
 )
 
@@ -95,7 +97,14 @@ async def async_setup_entry(
     ]
     entities.append(TelenotConnectionSensor(coordinator))
     entities.extend(TelenotAreaSensor(coordinator, i) for i in range(1, NUM_AREAS + 1))
+    entities.extend(TelenotDetectorSensor(coordinator, name) for name in coordinator.detectors)
     async_add_entities(entities)
+
+    @callback
+    def add_detectors(names: list[str]) -> None:
+        async_add_entities(TelenotDetectorSensor(coordinator, name) for name in names)
+
+    entry.async_on_unload(coordinator.add_detector_listener(add_detectors))
 
 
 class TelenotLedSensor(TelenotEntity, BinarySensorEntity):
@@ -168,3 +177,30 @@ class TelenotAreaSensor(TelenotEntity, BinarySensorEntity):
             "blinking": state.area_info[self._index - 1].blinking,
             "locked": state.area_locked[self._index - 1].active,
         }
+
+
+class TelenotDetectorSensor(TelenotEntity, BinarySensorEntity):
+    """A detector found in the keypad message list; on while the panel lists it.
+
+    Created automatically the first time a detector shows up in the list.
+    """
+
+    def __init__(self, coordinator: TelenotCoordinator, name: str) -> None:
+        """Initialise."""
+        super().__init__(coordinator, f"detector_{slugify(name)}")
+        self._detector = name
+        self._attr_name = name
+        self._attr_device_class = guess_device_class(name)
+
+    @property
+    def is_on(self) -> bool | None:
+        """Listed as open; unknown until the list was read."""
+        if self.coordinator.open_detectors is None:
+            return None
+        return self._detector in self.coordinator.open_detectors
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Panel texts of the detector."""
+        info = self.coordinator.detectors.get(self._detector, {})
+        return {"text": info.get("text", ""), "location": info.get("location", "")}

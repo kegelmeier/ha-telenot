@@ -6,6 +6,7 @@ import asyncio
 import hmac
 import logging
 import re
+import time
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import Any
@@ -78,6 +79,12 @@ SNAPSHOT_DELAY = 3.0
 PROMPT_TIMEOUT = 4.0
 MAX_BACKOFF = 300
 ARMING_TIMEOUT = 120
+# message list reader: scroll the keypad's open-detector list (DOWN key) when the
+# "ready" LEDs go out, and again every MESSAGES_INTERVAL while something stays open
+READ_DELAY = 3.0
+MESSAGES_INTERVAL = 120
+USER_IDLE = 30.0  # never scroll while someone is operating the keypad
+MAX_MESSAGES = 64
 
 _ACCESS_LEVEL = {
     ACCESS_OPERATOR: AccessLevel.OPERATOR,
@@ -89,6 +96,10 @@ _REFUSED = re.compile(r"falsch|nicht m.glich|verweigert|gesperrt|wrong|denied", 
 _AWAY = re.compile(r"(extern|ext\.).*scharf|scharf.*(extern|ext\.)|armed away", re.IGNORECASE)
 _HOME = re.compile(r"(intern|int\.).*scharf|scharf.*(intern|int\.)|armed home", re.IGNORECASE)
 _DISARMED = re.compile(r"unscharf|disarmed", re.IGNORECASE)
+_READY = re.compile(r"bereit|ready", re.IGNORECASE)
+_LIST_END = re.compile(
+    r"keine\s+(weiteren\s+)?meldung|no\s+(more\s+)?(messages|entries)", re.IGNORECASE
+)
 
 # Event log (event entity) types
 EVENT_ARMED_AWAY = "armed_away"
@@ -98,6 +109,8 @@ EVENT_TRIGGERED = "triggered"
 EVENT_FAULT = "fault"
 EVENT_FAULT_CLEARED = "fault_cleared"
 EVENT_COMMAND_FAILED = "command_failed"
+EVENT_DETECTOR_OPENED = "detector_opened"
+EVENT_DETECTOR_CLOSED = "detector_closed"
 EVENT_TYPES = [
     EVENT_ARMED_AWAY,
     EVENT_ARMED_HOME,
@@ -106,6 +119,8 @@ EVENT_TYPES = [
     EVENT_FAULT,
     EVENT_FAULT_CLEARED,
     EVENT_COMMAND_FAILED,
+    EVENT_DETECTOR_OPENED,
+    EVENT_DETECTOR_CLOSED,
 ]
 _STATE_EVENTS = {
     AlarmControlPanelState.ARMED_AWAY: EVENT_ARMED_AWAY,
@@ -120,6 +135,13 @@ _TARGET_ACTIONS = {
 }
 
 type TelenotConfigEntry = ConfigEntry[TelenotCoordinator]
+
+_UNSET: Any = object()
+
+
+def detector_key(line1: str, line2: str) -> str:
+    """Name of a detector from its message-list screen ("Kippfenster re." + "OG")."""
+    return " ".join(f"{line1} {line2}".split())
 
 
 def create_client(data: dict[str, Any], options: dict[str, Any] | None = None) -> BuildSecClient:
@@ -184,6 +206,16 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         # last panel-reported state, None until a complete snapshot after (re)connect
         self._last_state: AlarmControlPanelState | None = None
         self._last_fault: bool | None = None
+        # detectors ever seen in the keypad message list: name -> {"text", "location"}
+        self.detectors: dict[str, dict[str, str]] = {}
+        # detectors currently listed, None until the list was read once
+        self.open_detectors: set[str] | None = None
+        self.messages_read_at: float | None = None
+        self._detector_listeners: list[Callable[[list[str]], None]] = []
+        self._ready: Any = _UNSET
+        self._read_unsub: CALLBACK_TYPE | None = None
+        self._read_task: asyncio.Task[None] | None = None
+        self._last_user_key = 0.0
         self._unsubs = [
             self.client.add_listener(self._on_client_state),
             self.client.add_disconnect_listener(self._on_client_disconnect),
@@ -200,6 +232,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             if latched := stored.get("latched_state"):
                 self.latched_state = AlarmControlPanelState(latched)
             self.paused = bool(stored.get("paused", False))
+            self.detectors = dict(stored.get("detectors") or {})
         if self.paused:
             _LOGGER.info("Remote access is paused, not connecting to the Telenot panel")
         if self.on_demand:
@@ -222,6 +255,9 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         self._shutting_down = True
         self._resumed.set()
         self._cancel_idle()
+        self._cancel_read()
+        if self._read_task is not None:
+            self._read_task.cancel()
         if self._arming_unsub is not None:
             self._arming_unsub()
             self._arming_unsub = None
@@ -375,6 +411,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             "labels": self.labels.as_dict(),
             "latched_state": self.latched_state,
             "paused": self.paused,
+            "detectors": self.detectors,
         }
 
     # ------------------------------------------------------------------ pause
@@ -386,6 +423,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         self.paused = True
         self._resumed.clear()
         self._cancel_idle()
+        self._cancel_read()
         await self._store.async_save(self._store_data())
         async with self._command_lock:  # let a running command finish first
             await self.client.disconnect()
@@ -435,6 +473,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         if self.arming_target is not None and self.alarm_state() == self.arming_target:
             self.arming_target = None
         self._track_events()
+        self._track_ready()
         self.async_set_updated_data(self.client.state)
 
     @callback
@@ -442,6 +481,8 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         self._disconnected.set()
         self._last_state = None
         self._last_fault = None
+        self._ready = _UNSET
+        self._cancel_read()
         if not self._shutting_down:
             _LOGGER.debug("Telenot session closed: %s", error)
             self.async_update_listeners()
@@ -514,7 +555,11 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             for key in keys:
                 await self.client.press(key)
 
+        self._user_activity()
         await self._command(run)
+
+    def _user_activity(self) -> None:
+        self._last_user_key = time.monotonic()
 
     async def async_set_alarm(self, target: AlarmControlPanelState, code: str | None) -> None:
         """Arm or disarm via the keypad dialogue (ES/IS/US key, code prompt, OK).
@@ -531,6 +576,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         }[target]
         code = self.config_entry.data[CONF_KEYPAD_CODE]
         sequence = self.options[CONF_ARM_SEQUENCE]
+        self._user_activity()
 
         async def run() -> None:
             await self.client.press(key)
@@ -600,6 +646,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         await self._toggle(f"area_lock_{index}", area_lock_key(index))
 
     async def _toggle(self, action: str, key: int) -> None:
+        self._user_activity()
         try:
             response = await self._command(lambda: self.client.press_and_confirm(key))
             if response == 2:
@@ -678,3 +725,153 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         if self.arming_target is not None:
             return AlarmControlPanelState.ARMING
         return AlarmControlPanelState.DISARMED
+
+    # ------------------------------------------------------------------ message list
+
+    @property
+    def ready(self) -> bool | None:
+        """Ready to arm: all LEDs labelled "Bereit" lit; None if no LED is labelled so."""
+        state = self.client.state
+        leds = [
+            state.free_leds[i - 1]
+            for i in range(1, NUM_FREE_LEDS + 1)
+            if (label := self.led_label(i)) and _READY.search(label)
+        ]
+        if not leds:
+            return None
+        return all(led.active for led in leds)
+
+    def add_detector_listener(self, callback_: Callable[[list[str]], None]) -> Callable[[], None]:
+        """Subscribe to newly discovered detectors; returns an unsubscribe function."""
+        self._detector_listeners.append(callback_)
+        return lambda: (
+            self._detector_listeners.remove(callback_)
+            if callback_ in self._detector_listeners
+            else None
+        )
+
+    @callback
+    def _track_ready(self) -> None:
+        """Read the message list when the ready LEDs go out; clear it when they light up."""
+        state = self.client.state
+        if not (state.connected and state.complete) or self.paused:
+            return
+        ready = self.ready
+        if ready == self._ready:
+            return
+        self._ready = ready
+        if ready is None:  # no LED labelled "Bereit": read only on request
+            return
+        if ready:
+            self._cancel_read()
+            self._apply_messages([])
+        else:
+            self._schedule_read(READ_DELAY)
+
+    def _schedule_read(self, delay: float) -> None:
+        if self.on_demand or self._shutting_down or self.paused:
+            return
+        self._cancel_read()
+        self._read_unsub = self.hass.loop.call_later(delay, self._start_read).cancel
+
+    def _cancel_read(self) -> None:
+        if self._read_unsub is not None:
+            self._read_unsub()
+            self._read_unsub = None
+
+    @callback
+    def _start_read(self) -> None:
+        self._read_unsub = None
+        if self._read_task is None and not self._shutting_down:
+            self._read_task = self.config_entry.async_create_background_task(
+                self.hass, self._auto_read(), f"{DOMAIN}-messages"
+            )
+
+    async def _auto_read(self) -> None:
+        try:
+            if self.paused or not (self.client.connected and self.client.state.complete):
+                return
+            busy = USER_IDLE - (time.monotonic() - self._last_user_key)
+            if busy > 0 or self._command_lock.locked():
+                self._schedule_read(max(busy, READ_DELAY))
+                return
+            if self.alarm_state() == AlarmControlPanelState.DISARMED:
+                try:
+                    await self.async_read_messages()
+                except HomeAssistantError as err:
+                    _LOGGER.debug("Reading the message list failed: %s", err)
+            if self._ready is not True:
+                self._schedule_read(MESSAGES_INTERVAL)
+        finally:
+            self._read_task = None
+
+    async def async_read_messages(self) -> list[str]:
+        """Scroll through the keypad message list and update the detector entities."""
+        if self.alarm_state() != AlarmControlPanelState.DISARMED:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="not_disarmed")
+        entries = await self._command(self._scroll_messages)
+        if entries is None:
+            raise HomeAssistantError("The keypad did not show the message list")
+        if self._ready is True:  # everything closed while we were scrolling
+            entries = []
+        return self._apply_messages(entries)
+
+    async def _scroll_messages(self) -> list[tuple[str, str]] | None:
+        """DOWN through "<area>/unscharf", the open detectors, "keine weiteren Meldungen".
+
+        Returns None if the display did not behave like the message list.
+        """
+        client = self.client
+        entries: list[tuple[str, str]] = []
+        try:
+            for step in range(MAX_MESSAGES + 1):
+                await client.press(Key.DOWN)
+                if not await client.wait_display_change(PROMPT_TIMEOUT):
+                    return None
+                line1, line2 = (" ".join(line.split()) for line in client.state.display)
+                if _LIST_END.search(f"{line1} {line2}"):
+                    return entries
+                if _DISARMED.search(line2):  # area header ("Kegelmann" / "unscharf")
+                    continue
+                if step == 0:
+                    return None  # not the message list (menu open?)
+                entries.append((line1, line2))
+            return None
+        finally:
+            await self._leave_message_list()
+
+    async def _leave_message_list(self) -> None:
+        """ESC goes back to the area header, a second ESC to the idle screen."""
+        for _ in range(2):
+            if not self.client.connected:
+                return
+            await self.client.press(Key.ESC)
+            if not await self.client.wait_display_change(PROMPT_TIMEOUT):
+                return
+            display = self.client.state.display
+            if not (_DISARMED.search(display[1]) or _LIST_END.search(" ".join(display))):
+                return
+
+    @callback
+    def _apply_messages(self, entries: list[tuple[str, str]]) -> list[str]:
+        found: dict[str, tuple[str, str]] = {}
+        for line1, line2 in entries:
+            found.setdefault(detector_key(line1, line2), (line1, line2))
+        new = [name for name in found if name not in self.detectors]
+        for name in new:
+            text, location = found[name]
+            self.detectors[name] = {"text": text, "location": location}
+        previous, current = self.open_detectors, set(found)
+        self.open_detectors = current
+        self.messages_read_at = time.time()
+        if new:
+            self._store.async_delay_save(self._store_data, 1)
+            for listener in list(self._detector_listeners):
+                listener(new)
+        if previous is not None:
+            for name in sorted(current - previous):
+                self._emit(EVENT_DETECTOR_OPENED, source="panel", detector=name)
+            for name in sorted(previous - current):
+                self._emit(EVENT_DETECTOR_CLOSED, source="panel", detector=name)
+        self.async_update_listeners()
+        return sorted(current)
