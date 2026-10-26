@@ -6,6 +6,7 @@ from pathlib import Path
 
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.lovelace.const import LOVELACE_DATA, MODE_STORAGE
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
@@ -36,9 +37,31 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(CARD_URL, str(CARD_FILE), cache_headers=True)]
     )
-    if "frontend" in hass.config.components:
-        version = (await async_get_integration(hass, DOMAIN)).version
-        add_extra_js_url(hass, f"{CARD_URL}?v={version}")
+    version = (await async_get_integration(hass, DOMAIN)).version
+    url = f"{CARD_URL}?v={version}"
+    if not await _async_register_card_resource(hass, url) and "frontend" in hass.config.components:
+        # YAML-mode resources: fall back to a script tag in the frontend page.
+        add_extra_js_url(hass, url)
+    return True
+
+
+async def _async_register_card_resource(hass: HomeAssistant, url: str) -> bool:
+    """Register the card as a Lovelace resource (storage mode); False if not possible.
+
+    Dashboards load their resources every time they open, whereas an extra JS URL is
+    only part of the frontend page when it was served after this integration set up.
+    """
+    lovelace = hass.data.get(LOVELACE_DATA)
+    if lovelace is None or lovelace.resource_mode != MODE_STORAGE:
+        return False
+    resources = lovelace.resources
+    await resources.async_get_info()  # loads the collection from storage
+    for item in resources.async_items():
+        if item["url"].split("?")[0] == CARD_URL:
+            if item["url"] != url:
+                await resources.async_update_item(item["id"], {"res_type": "module", "url": url})
+            return True
+    await resources.async_create_item({"res_type": "module", "url": url})
     return True
 
 

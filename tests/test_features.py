@@ -156,6 +156,12 @@ async def test_pause_releases_remote_access(
         await coordinator.async_press_keys([0x31])
     assert fake_panel.received_keys == keys_before
 
+    # resume without a reload: the running connection loop must reconnect
+    await hass.services.async_call("switch", "turn_on", {"entity_id": remote}, blocking=True)
+    await wait_for(lambda: coordinator.connected, timeout=10)
+    await hass.services.async_call("switch", "turn_off", {"entity_id": remote}, blocking=True)
+    await wait_for(lambda: not coordinator.connected)
+
     # paused survives a reload
     await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
@@ -239,6 +245,22 @@ async def test_keypad_card_is_served(
     assert response.status == 200
     assert "telenot-keypad-card" in await response.text()
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_keypad_card_lovelace_resource(hass: HomeAssistant) -> None:
+    from homeassistant.components.lovelace.const import LOVELACE_DATA
+
+    from custom_components.telenot_buildsec import _async_register_card_resource
+
+    assert await async_setup_component(hass, "lovelace", {})
+    resources = hass.data[LOVELACE_DATA].resources
+    await resources.async_get_info()
+    await resources.async_create_item({"res_type": "module", "url": f"{CARD_URL}?v=0.0.1"})
+
+    assert await _async_register_card_resource(hass, f"{CARD_URL}?v=9.9.9")
+    assert await _async_register_card_resource(hass, f"{CARD_URL}?v=9.9.9")
+    urls = [item["url"] for item in resources.async_items()]
+    assert urls == [f"{CARD_URL}?v=9.9.9"]  # old version updated, never duplicated
 
 
 OPEN_SENSOR = "sensor.telenot_127_0_0_1_open_messages"

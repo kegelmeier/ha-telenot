@@ -169,7 +169,7 @@ watch the LED and display sensors while arming at a real keypad and pick the mat
 
 The integration ships a Lovelace card that looks and works like the BuildSec keypad:
 LCD, the four LEDs with your labels, alarm/fault/walk-test indicators and every key.
-It is loaded automatically, no resource or HACS frontend install needed.
+It is registered automatically as a dashboard resource (`/telenot_buildsec/telenot-keypad-card.js`), no manual resource or HACS frontend install needed.
 
 ```yaml
 type: custom:telenot-keypad-card

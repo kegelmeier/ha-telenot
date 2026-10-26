@@ -3,7 +3,8 @@
   "name": "Telenot (BuildSec)",
   "after_dependencies": [
     "frontend",
-    "http"
+    "http",
+    "lovelace"
   ],
   "codeowners": [
     "@kegelmeier"
@@ -18,5 +19,5 @@
     "custom_components.telenot_buildsec.pytelenot"
   ],
   "requirements": [],
-  "version": "0.5.0"
+  "version": "0.5.1"
 }

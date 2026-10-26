@@ -447,6 +447,11 @@ class BuildSecClient:
             self._notify()
         if s2 is not None:
             await s2.close()
+        if was_connected:
+            # The closed session no longer reports through on_closed (it is not
+            # self._s2 any more), so tell the listeners here.
+            for callback in list(self._disconnect_listeners):
+                callback(None)
 
     async def _start_session(self, block_id: int, timeout: float) -> bytes:
         assert self._s2 is not None
