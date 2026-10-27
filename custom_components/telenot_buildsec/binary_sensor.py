@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -120,12 +121,12 @@ class TelenotLedSensor(TelenotEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """LED lit or blinking."""
-        return self.entity_description.led(self.coordinator.client.state).active
+        return self.entity_description.led(self.coordinator.state).active
 
     @property
     def extra_state_attributes(self) -> dict[str, bool]:
         """Whether the LED is blinking."""
-        return {"blinking": self.entity_description.led(self.coordinator.client.state).blinking}
+        return {"blinking": self.entity_description.led(self.coordinator.state).blinking}
 
 
 class TelenotConnectionSensor(TelenotEntity, BinarySensorEntity):
@@ -149,6 +150,17 @@ class TelenotConnectionSensor(TelenotEntity, BinarySensorEntity):
         """Session open."""
         return self.coordinator.connected
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """When the session started and why the last one ended (since Home Assistant start)."""
+        coordinator = self.coordinator
+        return {
+            "connected_since": coordinator.connected_since,
+            "disconnects": coordinator.disconnects,
+            "last_disconnect": coordinator.last_disconnect,
+            "last_disconnect_reason": coordinator.last_disconnect_reason,
+        }
+
 
 class TelenotAreaSensor(TelenotEntity, BinarySensorEntity):
     """Red indicator LED of a Meldebereich (meaning depends on panel programming)."""
@@ -166,12 +178,12 @@ class TelenotAreaSensor(TelenotEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """Indicator lit or blinking."""
-        return self.coordinator.client.state.area_info[self._index - 1].active
+        return self.coordinator.state.area_info[self._index - 1].active
 
     @property
     def extra_state_attributes(self) -> dict[str, bool | int]:
         """Blink and lock state."""
-        state = self.coordinator.client.state
+        state = self.coordinator.state
         return {
             "index": self._index,
             "blinking": state.area_info[self._index - 1].blinking,

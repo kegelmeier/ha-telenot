@@ -19,5 +19,5 @@
     "custom_components.telenot_buildsec.pytelenot"
   ],
   "requirements": [],
-  "version": "0.5.1"
+  "version": "0.5.2"
 }

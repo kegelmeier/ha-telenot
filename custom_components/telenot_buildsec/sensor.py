@@ -49,7 +49,7 @@ class TelenotDisplaySensor(TelenotEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         """Display text."""
-        return self.coordinator.client.state.display[self._line - 1]
+        return self.coordinator.state.display[self._line - 1]
 
 
 class TelenotBuzzerSensor(TelenotEntity, SensorEntity):
@@ -67,7 +67,7 @@ class TelenotBuzzerSensor(TelenotEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         """Buzzer pattern."""
-        return self.coordinator.client.state.buzzer.value
+        return self.coordinator.state.buzzer.value
 
 
 class TelenotFreeLedSensor(TelenotEntity, SensorEntity):
@@ -93,13 +93,13 @@ class TelenotFreeLedSensor(TelenotEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         """LED colour (off if dark)."""
-        led = self.coordinator.client.state.free_leds[self._index - 1]
+        led = self.coordinator.state.free_leds[self._index - 1]
         return led.color.value if led.active else LedColor.OFF.value
 
     @property
     def extra_state_attributes(self) -> dict[str, bool | int]:
         """Blinking flag."""
-        led = self.coordinator.client.state.free_leds[self._index - 1]
+        led = self.coordinator.state.free_leds[self._index - 1]
         return {"index": self._index, "blinking": led.blinking}
 
 

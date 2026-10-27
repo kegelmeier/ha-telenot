@@ -114,7 +114,7 @@ class TelenotAlarmPanel(TelenotEntity, AlarmControlPanelEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose the keypad display and the indicators used for the state."""
-        state = self.coordinator.client.state
+        state = self.coordinator.state
         return {
             "display": "\n".join(state.display),
             "armed_away_indicator": self.coordinator.resolved_source(CONF_ARMED_AWAY_SOURCE),
@@ -124,7 +124,7 @@ class TelenotAlarmPanel(TelenotEntity, AlarmControlPanelEntity):
 
     def _keypad(self) -> dict[str, Any]:
         """Everything the keypad card shows, in one attribute."""
-        state = self.coordinator.client.state
+        state = self.coordinator.state
 
         registry = er.async_get(self.hass)
         entry = self.coordinator.config_entry

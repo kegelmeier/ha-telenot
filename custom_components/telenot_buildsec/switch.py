@@ -53,7 +53,7 @@ class TelenotFunctionSwitch(TelenotEntity, SwitchEntity):
     @property
     def is_on(self) -> bool:
         """Switching function active."""
-        return self.coordinator.client.state.switches[self._index - 1]
+        return self.coordinator.state.switches[self._index - 1]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -92,7 +92,7 @@ class TelenotAreaLockSwitch(TelenotEntity, SwitchEntity):
     @property
     def is_on(self) -> bool:
         """Area locked."""
-        return self.coordinator.client.state.area_locked[self._index - 1].active
+        return self.coordinator.state.area_locked[self._index - 1].active
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Lock the area."""

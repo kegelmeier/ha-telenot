@@ -205,7 +205,41 @@ async def test_reconnect(hass: HomeAssistant, fake_panel: FakePanel, monkeypatch
     assert coordinator.connected
     await fake_panel.drop_connection()
     await wait_for(lambda: not coordinator.connected)
+    await hass.async_block_till_done()
+    # A short panel-side drop keeps the last state instead of going unavailable.
+    assert hass.states.get("alarm_control_panel.telenot_127_0_0_1").state == "disarmed"
+    connection = hass.states.get("binary_sensor.telenot_127_0_0_1_connection")
+    assert connection.state == "off"
+    assert connection.attributes["disconnects"] == 1
+    assert connection.attributes["last_disconnect_reason"]
+    await wait_for(lambda: coordinator.connected, timeout=10)
+    await hass.async_block_till_done()
+    assert hass.states.get("alarm_control_panel.telenot_127_0_0_1").state == "disarmed"
+    assert hass.states.get("binary_sensor.telenot_127_0_0_1_connection").state == "on"
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_reconnect_grace_expires(
+    hass: HomeAssistant, fake_panel: FakePanel, monkeypatch
+) -> None:
+    monkeypatch.setattr("custom_components.telenot_buildsec.coordinator.asyncio.sleep", _fast_sleep)
+    monkeypatch.setattr("custom_components.telenot_buildsec.coordinator.RECONNECT_GRACE", 0.5)
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Telenot 127.0.0.1", data=entry_data(fake_panel), unique_id="panel"
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    fake_panel.busy = True  # the panel refuses new sessions for now
+    await fake_panel.drop_connection()
+    await wait_for(lambda: not coordinator.connected)
+    await hass.async_block_till_done()
+    assert hass.states.get("alarm_control_panel.telenot_127_0_0_1").state == "disarmed"
+    await wait_for(lambda: not coordinator.available, timeout=5)
+    await hass.async_block_till_done()
     assert hass.states.get("alarm_control_panel.telenot_127_0_0_1").state == "unavailable"
+    fake_panel.busy = False
     await wait_for(lambda: coordinator.connected, timeout=10)
     await hass.async_block_till_done()
     assert hass.states.get("alarm_control_panel.telenot_127_0_0_1").state == "disarmed"

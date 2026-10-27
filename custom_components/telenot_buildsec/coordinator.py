@@ -8,7 +8,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.alarm_control_panel import AlarmControlPanelState
@@ -22,8 +22,10 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ACCESS_INSTALLER,
@@ -78,6 +80,11 @@ STORAGE_VERSION = 1
 SNAPSHOT_DELAY = 3.0
 PROMPT_TIMEOUT = 4.0
 MAX_BACKOFF = 300
+# The panel closes the remote session now and then on its own (observed about every
+# 35 minutes). Reconnect right away and keep showing the last complete state for up to
+# RECONNECT_GRACE seconds, so such a hand-over does not make every entity unavailable.
+RECONNECT_DELAY = 1.0
+RECONNECT_GRACE = 60.0
 ARMING_TIMEOUT = 120
 # message list reader: scroll the keypad's open-detector list (DOWN key) when the
 # "ready" LEDs go out, and again every MESSAGES_INTERVAL while something stays open
@@ -137,6 +144,13 @@ _TARGET_ACTIONS = {
 type TelenotConfigEntry = ConfigEntry[TelenotCoordinator]
 
 _UNSET: Any = object()
+
+
+def _duration(start: datetime | None, end: datetime) -> str:
+    if start is None:
+        return "an unknown time"
+    seconds = int((end - start).total_seconds())
+    return f"{seconds // 60} min {seconds % 60} s"
 
 
 def detector_key(line1: str, line2: str) -> str:
@@ -216,6 +230,14 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         self._read_unsub: CALLBACK_TYPE | None = None
         self._read_task: asyncio.Task[None] | None = None
         self._last_user_key = 0.0
+        # last complete state, shown while a dropped session is being re-established
+        self._held_state: PanelState | None = None
+        self._grace_unsub: CALLBACK_TYPE | None = None
+        # connection statistics (also exposed on the connection sensor)
+        self.connected_since: datetime | None = None
+        self.last_disconnect: datetime | None = None
+        self.last_disconnect_reason: str | None = None
+        self.disconnects = 0
         self._unsubs = [
             self.client.add_listener(self._on_client_state),
             self.client.add_disconnect_listener(self._on_client_disconnect),
@@ -261,6 +283,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         if self._arming_unsub is not None:
             self._arming_unsub()
             self._arming_unsub = None
+        self._end_grace()
         if self._labels_task is not None:
             self._labels_task.cancel()
         for unsub in self._unsubs:
@@ -284,7 +307,16 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             return False
         if self.on_demand:
             return self.last_update_success
-        return self.client.connected and self.client.state.complete
+        if self.client.connected and self.client.state.complete:
+            return True
+        return self._held_state is not None
+
+    @property
+    def state(self) -> PanelState:
+        """Keypad state for the entities: live, or the held-over one during a reconnect."""
+        if self._held_state is not None and not self.client.state.complete:
+            return self._held_state
+        return self.client.state
 
     # ------------------------------------------------------------------ event log
 
@@ -329,7 +361,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
                 if self._shutting_down:
                     return
                 if not self.paused:
-                    _LOGGER.info("Connection to Telenot panel lost, reconnecting")
+                    backoff = RECONNECT_DELAY
             if self.paused:
                 await self._resumed.wait()
                 if self._shutting_down:
@@ -349,7 +381,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
                 return
             except TelenotError as err:
                 _LOGGER.debug("Reconnect failed: %s", err)
-                backoff = min(backoff * 2, MAX_BACKOFF)
+                backoff = min(max(backoff * 2, 5), MAX_BACKOFF)
             else:
                 backoff = 5
 
@@ -370,6 +402,12 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             self.client.state.firmware,
             self.client.text_crc,
         )
+        self.connected_since = dt_util.utcnow()
+        if self.last_disconnect is not None and not self.on_demand:
+            _LOGGER.info(
+                "Reconnected to Telenot panel after %.1f s",
+                (self.connected_since - self.last_disconnect).total_seconds(),
+            )
         self._update_device_info()
         self.async_set_updated_data(self.client.state)
         crc = self.client.text_crc
@@ -424,6 +462,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         self._resumed.clear()
         self._cancel_idle()
         self._cancel_read()
+        self._end_grace()
         await self._store.async_save(self._store_data())
         async with self._command_lock:  # let a running command finish first
             await self.client.disconnect()
@@ -463,6 +502,8 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
 
     @callback
     def _on_client_state(self) -> None:
+        if self._held_state is not None and self.client.state.complete:
+            self._end_grace()
         text = " ".join(self.client.state.display)
         if _AWAY.search(text):
             self._set_latched(AlarmControlPanelState.ARMED_AWAY)
@@ -479,13 +520,53 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
     @callback
     def _on_client_disconnect(self, error: Exception | None) -> None:
         self._disconnected.set()
-        self._last_state = None
-        self._last_fault = None
         self._ready = _UNSET
         self._cancel_read()
-        if not self._shutting_down:
+        if self._shutting_down:
+            return
+        now = dt_util.utcnow()
+        unexpected = error is not None and not self.paused and not self.on_demand
+        if unexpected:
+            self.disconnects += 1
+            self.last_disconnect = now
+            self.last_disconnect_reason = str(error)
+            _LOGGER.info(
+                "Telenot panel ended the session after %s (%s), reconnecting",
+                _duration(self.connected_since, now),
+                error,
+            )
+        else:
             _LOGGER.debug("Telenot session closed: %s", error)
-            self.async_update_listeners()
+        self.connected_since = None
+        if unexpected and self.client.state.complete and self._held_state is None:
+            # Keep the last state (and the event baseline) through a short reconnect.
+            self._held_state = self.client.state
+            self._grace_unsub = async_call_later(self.hass, RECONNECT_GRACE, self._grace_expired)
+        elif self._held_state is None:
+            self._last_state = None
+            self._last_fault = None
+        self.async_update_listeners()
+
+    @callback
+    def _grace_expired(self, _now: datetime) -> None:
+        self._grace_unsub = None
+        if self._held_state is None:
+            return
+        _LOGGER.warning(
+            "Telenot panel still not reachable %.0f s after the session ended", RECONNECT_GRACE
+        )
+        self._end_grace()
+        if not self.client.state.complete:
+            self._last_state = None
+            self._last_fault = None
+        self.async_update_listeners()
+
+    @callback
+    def _end_grace(self) -> None:
+        self._held_state = None
+        if self._grace_unsub is not None:
+            self._grace_unsub()
+            self._grace_unsub = None
 
     # ------------------------------------------------------------------ on-demand mode
 
@@ -661,7 +742,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
 
     def _indicator(self, source: str) -> bool | None:
         """Evaluate an indicator source; None if not resolvable."""
-        state = self.client.state
+        state = self.state
         kind, _, number = source.partition("_")
         if not number.isdigit():
             return None
@@ -711,12 +792,12 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
             return self.latched_state == wanted
         if source == SOURCE_LCD:
             pattern = _AWAY if option == CONF_ARMED_AWAY_SOURCE else _HOME
-            return bool(pattern.search(" ".join(self.client.state.display)))
+            return bool(pattern.search(" ".join(self.state.display)))
         return bool(self._indicator(source))
 
     def alarm_state(self) -> AlarmControlPanelState:
         """Map keypad indicators to an alarm control panel state."""
-        if self.client.state.alarm.active:
+        if self.state.alarm.active:
             return AlarmControlPanelState.TRIGGERED
         if self._is_armed(CONF_ARMED_AWAY_SOURCE):
             return AlarmControlPanelState.ARMED_AWAY
@@ -731,7 +812,7 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
     @property
     def ready(self) -> bool | None:
         """Ready to arm: all LEDs labelled "Bereit" lit; None if no LED is labelled so."""
-        state = self.client.state
+        state = self.state
         leds = [
             state.free_leds[i - 1]
             for i in range(1, NUM_FREE_LEDS + 1)
