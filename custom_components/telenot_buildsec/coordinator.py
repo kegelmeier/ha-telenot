@@ -381,7 +381,9 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
                 return
             except TelenotError as err:
                 _LOGGER.debug("Reconnect failed: %s", err)
-                backoff = min(max(backoff * 2, 5), MAX_BACKOFF)
+                # 1, 2, 4, ... s after a panel-side drop (the panel takes a few seconds
+                # before it accepts the next session), 5, 10, ... s otherwise.
+                backoff = min(backoff * 2, MAX_BACKOFF)
             else:
                 backoff = 5
 
@@ -502,7 +504,11 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
 
     @callback
     def _on_client_state(self) -> None:
-        if self._held_state is not None and self.client.state.complete:
+        if not self.client.connected:
+            # The client reports the dropped session before the disconnect listeners
+            # run; hold the state now so entities never flash unavailable.
+            self._hold_state()
+        elif self._held_state is not None and self.client.state.complete:
             self._end_grace()
         text = " ".join(self.client.state.display)
         if _AWAY.search(text):
@@ -538,14 +544,28 @@ class TelenotCoordinator(DataUpdateCoordinator[PanelState]):
         else:
             _LOGGER.debug("Telenot session closed: %s", error)
         self.connected_since = None
-        if unexpected and self.client.state.complete and self._held_state is None:
-            # Keep the last state (and the event baseline) through a short reconnect.
-            self._held_state = self.client.state
-            self._grace_unsub = async_call_later(self.hass, RECONNECT_GRACE, self._grace_expired)
-        elif self._held_state is None:
+        if unexpected:
+            self._hold_state()
+        else:
+            self._end_grace()
+        if self._held_state is None:
             self._last_state = None
             self._last_fault = None
         self.async_update_listeners()
+
+    @callback
+    def _hold_state(self) -> None:
+        """Keep the last complete state (and the event baseline) through a short reconnect."""
+        if (
+            self._held_state is not None
+            or not self.client.state.complete
+            or self.paused
+            or self.on_demand
+            or self._shutting_down
+        ):
+            return
+        self._held_state = self.client.state
+        self._grace_unsub = async_call_later(self.hass, RECONNECT_GRACE, self._grace_expired)
 
     @callback
     def _grace_expired(self, _now: datetime) -> None:

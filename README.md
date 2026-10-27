@@ -86,8 +86,8 @@ against a decrypted capture of the BuildSec iOS app talking to a real panel (see
 - Never retries wrong credentials (avoids keypad lockouts and manipulation reports)
 - After a (re)connect, entities stay unavailable until the panel has sent its full status, so a
   stale state is never shown as current. Exception: when the panel ends the session on its own
-  (some panels do this about every 35 minutes), the integration reconnects after 1 s and keeps
-  the last state for up to 60 s instead of flagging everything unavailable
+  (some panels close every remote session after about 35½ minutes), the integration retries after
+  1, 2, 4 … s and keeps the last state for up to 60 s instead of flagging everything unavailable
 - The *Connection* sensor shows when the session started, how often the panel dropped it and why
   (attributes `connected_since`, `disconnects`, `last_disconnect`, `last_disconnect_reason`); each
   drop is also logged at INFO level

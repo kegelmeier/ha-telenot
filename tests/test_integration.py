@@ -203,6 +203,15 @@ async def test_reconnect(hass: HomeAssistant, fake_panel: FakePanel, monkeypatch
     await hass.async_block_till_done()
     coordinator = entry.runtime_data
     assert coordinator.connected
+    seen: list[str] = []
+    hass.bus.async_listen(
+        "state_changed",
+        lambda event: (
+            seen.append(event.data["new_state"].state)
+            if event.data["entity_id"] == "alarm_control_panel.telenot_127_0_0_1"
+            else None
+        ),
+    )
     await fake_panel.drop_connection()
     await wait_for(lambda: not coordinator.connected)
     await hass.async_block_till_done()
@@ -216,6 +225,7 @@ async def test_reconnect(hass: HomeAssistant, fake_panel: FakePanel, monkeypatch
     await hass.async_block_till_done()
     assert hass.states.get("alarm_control_panel.telenot_127_0_0_1").state == "disarmed"
     assert hass.states.get("binary_sensor.telenot_127_0_0_1_connection").state == "on"
+    assert "unavailable" not in seen  # not even for a moment
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 
